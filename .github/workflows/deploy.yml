@@ -1,0 +1,53 @@
+name: Build and deploy dashboard
+
+# Runs automatically whenever dashboard/ changes on main -- rebuilds the
+# single-file dashboard from source (dashboard_template.html +
+# dashboard_logic.js + data/*.json via assemble.py) and publishes it to
+# GitHub Pages. Edit the source, push, and the live URL updates on its own
+# a minute or two later -- no manual build/upload step.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "dashboard/**"
+  workflow_dispatch: # lets you trigger a rebuild by hand from the Actions tab too
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build dashboard HTML
+        run: python3 dashboard/assemble.py
+
+      - name: Stage Pages site
+        run: |
+          mkdir -p site
+          cp dashboard/landscape_health_dashboard_v2.html site/index.html
+          cp dashboard/pin_logo_white.png site/
+          cp -r dashboard/tour_images site/
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
