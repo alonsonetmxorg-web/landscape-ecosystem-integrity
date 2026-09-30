@@ -1,0 +1,826 @@
+{
+"761": {
+"kod": "60",
+"name": "Ústecký kraj"
+},
+"779": {
+"kod": "78",
+"name": "Liberecký kraj"
+},
+"787": {
+"kod": "78",
+"name": "Liberecký kraj"
+},
+"795": {
+"kod": "78",
+"name": "Liberecký kraj"
+},
+"809": {
+"kod": "78",
+"name": "Liberecký kraj"
+},
+"817": {
+"kod": "78",
+"name": "Liberecký kraj"
+},
+"825": {
+"kod": "60",
+"name": "Ústecký kraj"
+},
+"833": {
+"kod": "60",
+"name": "Ústecký kraj"
+},
+"841": {
+"kod": "60",
+"name": "Ústecký kraj"
+},
+"850": {
+"kod": "60",
+"name": "Ústecký kraj"
+},
+"868": {
+"kod": "60",
+"name": "Ústecký kraj"
+},
+"876": {
+"kod": "60",
+"name": "Ústecký kraj"
+},
+"884": {
+"kod": "60",
+"name": "Ústecký kraj"
+},
+"892": {
+"kod": "60",
+"name": "Ústecký kraj"
+},
+"906": {
+"kod": "60",
+"name": "Ústecký kraj"
+},
+"914": {
+"kod": "60",
+"name": "Ústecký kraj"
+},
+"922": {
+"kod": "60",
+"name": "Ústecký kraj"
+},
+"931": {
+"kod": "108",
+"name": "Kraj Vysočina"
+},
+"949": {
+"kod": "108",
+"name": "Kraj Vysočina"
+},
+"957": {
+"kod": "108",
+"name": "Kraj Vysočina"
+},
+"965": {
+"kod": "86",
+"name": "Královéhradecký kraj"
+},
+"973": {
+"kod": "86",
+"name": "Královéhradecký kraj"
+},
+"981": {
+"kod": "94",
+"name": "Pardubický kraj"
+},
+"990": {
+"kod": "94",
+"name": "Pardubický kraj"
+},
+"1007": {
+"kod": "86",
+"name": "Královéhradecký kraj"
+},
+"1015": {
+"kod": "86",
+"name": "Královéhradecký kraj"
+},
+"1023": {
+"kod": "86",
+"name": "Královéhradecký kraj"
+},
+"1031": {
+"kod": "86",
+"name": "Královéhradecký kraj"
+},
+"1040": {
+"kod": "86",
+"name": "Královéhradecký kraj"
+},
+"1058": {
+"kod": "86",
+"name": "Královéhradecký kraj"
+},
+"1066": {
+"kod": "86",
+"name": "Královéhradecký kraj"
+},
+"1074": {
+"kod": "94",
+"name": "Pardubický kraj"
+},
+"1082": {
+"kod": "94",
+"name": "Pardubický kraj"
+},
+"1091": {
+"kod": "94",
+"name": "Pardubický kraj"
+},
+"1104": {
+"kod": "86",
+"name": "Královéhradecký kraj"
+},
+"1112": {
+"kod": "86",
+"name": "Královéhradecký kraj"
+},
+"1121": {
+"kod": "86",
+"name": "Královéhradecký kraj"
+},
+"1139": {
+"kod": "78",
+"name": "Liberecký kraj"
+},
+"1147": {
+"kod": "78",
+"name": "Liberecký kraj"
+},
+"1155": {
+"kod": "78",
+"name": "Liberecký kraj"
+},
+"1163": {
+"kod": "94",
+"name": "Pardubický kraj"
+},
+"1171": {
+"kod": "94",
+"name": "Pardubický kraj"
+},
+"1180": {
+"kod": "94",
+"name": "Pardubický kraj"
+},
+"1198": {
+"kod": "94",
+"name": "Pardubický kraj"
+},
+"1201": {
+"kod": "86",
+"name": "Královéhradecký kraj"
+},
+"1210": {
+"kod": "86",
+"name": "Královéhradecký kraj"
+},
+"1228": {
+"kod": "86",
+"name": "Královéhradecký kraj"
+},
+"1236": {
+"kod": "94",
+"name": "Pardubický kraj"
+},
+"1244": {
+"kod": "94",
+"name": "Pardubický kraj"
+},
+"1252": {
+"kod": "94",
+"name": "Pardubický kraj"
+},
+"19": {
+"kod": "19",
+"name": "Hlavní město Praha"
+},
+"27": {
+"kod": "27",
+"name": "Středočeský kraj"
+},
+"35": {
+"kod": "27",
+"name": "Středočeský kraj"
+},
+"43": {
+"kod": "27",
+"name": "Středočeský kraj"
+},
+"51": {
+"kod": "27",
+"name": "Středočeský kraj"
+},
+"60": {
+"kod": "27",
+"name": "Středočeský kraj"
+},
+"78": {
+"kod": "27",
+"name": "Středočeský kraj"
+},
+"86": {
+"kod": "27",
+"name": "Středočeský kraj"
+},
+"94": {
+"kod": "27",
+"name": "Středočeský kraj"
+},
+"108": {
+"kod": "27",
+"name": "Středočeský kraj"
+},
+"116": {
+"kod": "27",
+"name": "Středočeský kraj"
+},
+"124": {
+"kod": "27",
+"name": "Středočeský kraj"
+},
+"132": {
+"kod": "27",
+"name": "Středočeský kraj"
+},
+"141": {
+"kod": "27",
+"name": "Středočeský kraj"
+},
+"159": {
+"kod": "27",
+"name": "Středočeský kraj"
+},
+"167": {
+"kod": "27",
+"name": "Středočeský kraj"
+},
+"175": {
+"kod": "27",
+"name": "Středočeský kraj"
+},
+"183": {
+"kod": "27",
+"name": "Středočeský kraj"
+},
+"191": {
+"kod": "27",
+"name": "Středočeský kraj"
+},
+"205": {
+"kod": "27",
+"name": "Středočeský kraj"
+},
+"213": {
+"kod": "27",
+"name": "Středočeský kraj"
+},
+"221": {
+"kod": "27",
+"name": "Středočeský kraj"
+},
+"230": {
+"kod": "27",
+"name": "Středočeský kraj"
+},
+"248": {
+"kod": "27",
+"name": "Středočeský kraj"
+},
+"256": {
+"kod": "27",
+"name": "Středočeský kraj"
+},
+"264": {
+"kod": "27",
+"name": "Středočeský kraj"
+},
+"272": {
+"kod": "27",
+"name": "Středočeský kraj"
+},
+"281": {
+"kod": "35",
+"name": "Jihočeský kraj"
+},
+"299": {
+"kod": "35",
+"name": "Jihočeský kraj"
+},
+"302": {
+"kod": "35",
+"name": "Jihočeský kraj"
+},
+"311": {
+"kod": "35",
+"name": "Jihočeský kraj"
+},
+"329": {
+"kod": "35",
+"name": "Jihočeský kraj"
+},
+"337": {
+"kod": "35",
+"name": "Jihočeský kraj"
+},
+"345": {
+"kod": "35",
+"name": "Jihočeský kraj"
+},
+"353": {
+"kod": "35",
+"name": "Jihočeský kraj"
+},
+"361": {
+"kod": "108",
+"name": "Kraj Vysočina"
+},
+"370": {
+"kod": "108",
+"name": "Kraj Vysočina"
+},
+"388": {
+"kod": "108",
+"name": "Kraj Vysočina"
+},
+"396": {
+"kod": "35",
+"name": "Jihočeský kraj"
+},
+"400": {
+"kod": "35",
+"name": "Jihočeský kraj"
+},
+"418": {
+"kod": "35",
+"name": "Jihočeský kraj"
+},
+"426": {
+"kod": "35",
+"name": "Jihočeský kraj"
+},
+"434": {
+"kod": "35",
+"name": "Jihočeský kraj"
+},
+"442": {
+"kod": "35",
+"name": "Jihočeský kraj"
+},
+"451": {
+"kod": "35",
+"name": "Jihočeský kraj"
+},
+"469": {
+"kod": "35",
+"name": "Jihočeský kraj"
+},
+"485": {
+"kod": "43",
+"name": "Plzeňský kraj"
+},
+"493": {
+"kod": "43",
+"name": "Plzeňský kraj"
+},
+"507": {
+"kod": "51",
+"name": "Karlovarský kraj"
+},
+"515": {
+"kod": "51",
+"name": "Karlovarský kraj"
+},
+"523": {
+"kod": "51",
+"name": "Karlovarský kraj"
+},
+"531": {
+"kod": "51",
+"name": "Karlovarský kraj"
+},
+"540": {
+"kod": "51",
+"name": "Karlovarský kraj"
+},
+"558": {
+"kod": "43",
+"name": "Plzeňský kraj"
+},
+"566": {
+"kod": "43",
+"name": "Plzeňský kraj"
+},
+"574": {
+"kod": "43",
+"name": "Plzeňský kraj"
+},
+"582": {
+"kod": "43",
+"name": "Plzeňský kraj"
+},
+"591": {
+"kod": "43",
+"name": "Plzeňský kraj"
+},
+"604": {
+"kod": "43",
+"name": "Plzeňský kraj"
+},
+"612": {
+"kod": "43",
+"name": "Plzeňský kraj"
+},
+"621": {
+"kod": "43",
+"name": "Plzeňský kraj"
+},
+"639": {
+"kod": "43",
+"name": "Plzeňský kraj"
+},
+"647": {
+"kod": "43",
+"name": "Plzeňský kraj"
+},
+"655": {
+"kod": "43",
+"name": "Plzeňský kraj"
+},
+"663": {
+"kod": "51",
+"name": "Karlovarský kraj"
+},
+"671": {
+"kod": "51",
+"name": "Karlovarský kraj"
+},
+"680": {
+"kod": "43",
+"name": "Plzeňský kraj"
+},
+"698": {
+"kod": "43",
+"name": "Plzeňský kraj"
+},
+"701": {
+"kod": "78",
+"name": "Liberecký kraj"
+},
+"710": {
+"kod": "78",
+"name": "Liberecký kraj"
+},
+"728": {
+"kod": "60",
+"name": "Ústecký kraj"
+},
+"736": {
+"kod": "60",
+"name": "Ústecký kraj"
+},
+"744": {
+"kod": "60",
+"name": "Ústecký kraj"
+},
+"752": {
+"kod": "60",
+"name": "Ústecký kraj"
+},
+"1261": {
+"kod": "94",
+"name": "Pardubický kraj"
+},
+"1279": {
+"kod": "94",
+"name": "Pardubický kraj"
+},
+"1287": {
+"kod": "94",
+"name": "Pardubický kraj"
+},
+"1295": {
+"kod": "116",
+"name": "Jihomoravský kraj"
+},
+"1309": {
+"kod": "116",
+"name": "Jihomoravský kraj"
+},
+"1317": {
+"kod": "116",
+"name": "Jihomoravský kraj"
+},
+"1325": {
+"kod": "116",
+"name": "Jihomoravský kraj"
+},
+"1333": {
+"kod": "116",
+"name": "Jihomoravský kraj"
+},
+"1341": {
+"kod": "116",
+"name": "Jihomoravský kraj"
+},
+"1350": {
+"kod": "116",
+"name": "Jihomoravský kraj"
+},
+"1368": {
+"kod": "116",
+"name": "Jihomoravský kraj"
+},
+"1376": {
+"kod": "116",
+"name": "Jihomoravský kraj"
+},
+"1384": {
+"kod": "116",
+"name": "Jihomoravský kraj"
+},
+"1392": {
+"kod": "116",
+"name": "Jihomoravský kraj"
+},
+"1406": {
+"kod": "116",
+"name": "Jihomoravský kraj"
+},
+"1414": {
+"kod": "116",
+"name": "Jihomoravský kraj"
+},
+"1422": {
+"kod": "141",
+"name": "Zlínský kraj"
+},
+"1431": {
+"kod": "141",
+"name": "Zlínský kraj"
+},
+"1449": {
+"kod": "141",
+"name": "Zlínský kraj"
+},
+"1457": {
+"kod": "141",
+"name": "Zlínský kraj"
+},
+"1465": {
+"kod": "141",
+"name": "Zlínský kraj"
+},
+"1473": {
+"kod": "116",
+"name": "Jihomoravský kraj"
+},
+"1481": {
+"kod": "116",
+"name": "Jihomoravský kraj"
+},
+"1490": {
+"kod": "116",
+"name": "Jihomoravský kraj"
+},
+"1503": {
+"kod": "108",
+"name": "Kraj Vysočina"
+},
+"1511": {
+"kod": "108",
+"name": "Kraj Vysočina"
+},
+"1520": {
+"kod": "141",
+"name": "Zlínský kraj"
+},
+"1538": {
+"kod": "141",
+"name": "Zlínský kraj"
+},
+"1546": {
+"kod": "141",
+"name": "Zlínský kraj"
+},
+"1554": {
+"kod": "124",
+"name": "Olomoucký kraj"
+},
+"1562": {
+"kod": "124",
+"name": "Olomoucký kraj"
+},
+"1571": {
+"kod": "108",
+"name": "Kraj Vysočina"
+},
+"1589": {
+"kod": "108",
+"name": "Kraj Vysočina"
+},
+"1597": {
+"kod": "108",
+"name": "Kraj Vysočina"
+},
+"1601": {
+"kod": "141",
+"name": "Zlínský kraj"
+},
+"1619": {
+"kod": "141",
+"name": "Zlínský kraj"
+},
+"1627": {
+"kod": "116",
+"name": "Jihomoravský kraj"
+},
+"1635": {
+"kod": "116",
+"name": "Jihomoravský kraj"
+},
+"1643": {
+"kod": "116",
+"name": "Jihomoravský kraj"
+},
+"1651": {
+"kod": "116",
+"name": "Jihomoravský kraj"
+},
+"1660": {
+"kod": "116",
+"name": "Jihomoravský kraj"
+},
+"1678": {
+"kod": "108",
+"name": "Kraj Vysočina"
+},
+"1686": {
+"kod": "108",
+"name": "Kraj Vysočina"
+},
+"1694": {
+"kod": "108",
+"name": "Kraj Vysočina"
+},
+"1708": {
+"kod": "108",
+"name": "Kraj Vysočina"
+},
+"1716": {
+"kod": "132",
+"name": "Moravskoslezský kraj"
+},
+"1724": {
+"kod": "132",
+"name": "Moravskoslezský kraj"
+},
+"1732": {
+"kod": "132",
+"name": "Moravskoslezský kraj"
+},
+"1741": {
+"kod": "132",
+"name": "Moravskoslezský kraj"
+},
+"1759": {
+"kod": "132",
+"name": "Moravskoslezský kraj"
+},
+"1767": {
+"kod": "132",
+"name": "Moravskoslezský kraj"
+},
+"1775": {
+"kod": "132",
+"name": "Moravskoslezský kraj"
+},
+"1783": {
+"kod": "132",
+"name": "Moravskoslezský kraj"
+},
+"1791": {
+"kod": "132",
+"name": "Moravskoslezský kraj"
+},
+"1805": {
+"kod": "132",
+"name": "Moravskoslezský kraj"
+},
+"1813": {
+"kod": "132",
+"name": "Moravskoslezský kraj"
+},
+"1821": {
+"kod": "132",
+"name": "Moravskoslezský kraj"
+},
+"1830": {
+"kod": "132",
+"name": "Moravskoslezský kraj"
+},
+"1848": {
+"kod": "132",
+"name": "Moravskoslezský kraj"
+},
+"1856": {
+"kod": "132",
+"name": "Moravskoslezský kraj"
+},
+"1864": {
+"kod": "132",
+"name": "Moravskoslezský kraj"
+},
+"1872": {
+"kod": "132",
+"name": "Moravskoslezský kraj"
+},
+"1881": {
+"kod": "124",
+"name": "Olomoucký kraj"
+},
+"1899": {
+"kod": "124",
+"name": "Olomoucký kraj"
+},
+"1902": {
+"kod": "124",
+"name": "Olomoucký kraj"
+},
+"1911": {
+"kod": "124",
+"name": "Olomoucký kraj"
+},
+"1929": {
+"kod": "132",
+"name": "Moravskoslezský kraj"
+},
+"1937": {
+"kod": "132",
+"name": "Moravskoslezský kraj"
+},
+"1945": {
+"kod": "132",
+"name": "Moravskoslezský kraj"
+},
+"1953": {
+"kod": "132",
+"name": "Moravskoslezský kraj"
+},
+"1961": {
+"kod": "132",
+"name": "Moravskoslezský kraj"
+},
+"1970": {
+"kod": "124",
+"name": "Olomoucký kraj"
+},
+"1988": {
+"kod": "124",
+"name": "Olomoucký kraj"
+},
+"1996": {
+"kod": "124",
+"name": "Olomoucký kraj"
+},
+"2003": {
+"kod": "124",
+"name": "Olomoucký kraj"
+},
+"2011": {
+"kod": "124",
+"name": "Olomoucký kraj"
+},
+"2020": {
+"kod": "124",
+"name": "Olomoucký kraj"
+},
+"2038": {
+"kod": "141",
+"name": "Zlínský kraj"
+},
+"2046": {
+"kod": "141",
+"name": "Zlínský kraj"
+},
+"2054": {
+"kod": "141",
+"name": "Zlínský kraj"
+},
+"2062": {
+"kod": "124",
+"name": "Olomoucký kraj"
+},
+"477": {
+"kod": "35",
+"name": "Jihočeský kraj"
+}
+}

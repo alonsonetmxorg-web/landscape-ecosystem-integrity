@@ -1,0 +1,29 @@
+# Raw/intermediate raster data never belongs in this repo -- it's
+# hundreds of GB across the pipeline (source satellite composites,
+# per-year GeoTIFFs, warped/reprojected copies, tile pyramids before
+# publishing). Regenerate it locally with the pipeline/ scripts instead.
+*.tif
+*.tiff
+*.img
+*.vrt
+tiles/
+
+# The dashboard's assembled output -- regenerate with:
+#   cd dashboard && python assemble.py
+dashboard/landscape_health_dashboard_v2.html
+dashboard/landscape_health_dashboard.html
+
+# Python / Jupyter housekeeping
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# OS / editor cruft
+.DS_Store
+*.swp
+
+# Don't accidentally commit large installers or local venvs
+*.sh.bak
+Miniconda*.sh
+.venv/
+venv/
