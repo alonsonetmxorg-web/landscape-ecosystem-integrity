@@ -3,158 +3,287 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ekosystémová integrita krajiny / Landscape Ecosystem Integrity</title>
+<title>Portál zdraví krajiny – indikátory regionální ekosystémové integrity</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
+  /* Design tokens -- from the colleagues' "Barevnost a základní styly" spec. */
+  :root {
+    --primary: #007270; --on-primary: #ffffff;
+    --surface-subtle: #F4F7F6; --surface-map: #E8EFEB; --surface-canvas: #F4F6F2; --surface: #ffffff;
+    --mint: #A0D4C6; --text: #202B29; --text-2: #63716D; --border: #E3E9E6; --no-data: #E2E7E4;
+    --chg-neg-strong: #B54836; --chg-pos-strong: #326EA8;
+    --chg-neg-soft: #E6C2BC; --chg-pos-soft: #BBCFE2;
+  }
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; height: 100%; font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; color: #1f2a24; }
+  html, body { margin: 0; padding: 0; height: 100%; font-family: Inter, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; color: var(--text); background: var(--surface-canvas); }
   #app { display: flex; flex-direction: column; height: 100vh; }
+  button, select, input { font-family: inherit; }
 
-  header { padding: 10px 20px; background: #14418b; color: #fff; display: flex; flex-direction: column; gap: 10px; }
-  .header-top { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
-  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
-  .lang-toggle { display: flex; background: #0d2a5a; border-radius: 6px; overflow: hidden; }
-  .lang-toggle button { border: none; background: transparent; color: #cfd8d1; padding: 5px 12px; font-size: 12px; font-weight: 700; cursor: pointer; }
-  .lang-toggle button.active { background: #d4a017; color: #14418b; }
+  /* ---- top bar ---- */
+  #topbar { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 24px; background: var(--surface); border-bottom: 1px solid var(--border); min-height: 72px; }
+  .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .brand-mark { flex: 0 0 auto; width: 36px; height: 36px; }
+  .brand-text { display: flex; flex-direction: column; min-width: 0; }
+  #app-title { margin: 0; font-size: 19px; font-weight: 700; color: var(--primary); line-height: 1.15; }
+  #app-subtitle { font-size: 11.5px; color: var(--text-2); line-height: 1.3; }
+  .top-right { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; justify-content: flex-end; }
+  #topnav { display: flex; align-items: center; gap: 4px; }
+  .nav-tab { border: none; background: transparent; color: var(--text-2); font-size: 14.5px; font-weight: 500; padding: 8px 14px; border-radius: 8px; cursor: pointer; }
+  .nav-tab:hover { color: var(--primary); }
+  .nav-tab.active { background: var(--surface-map); color: var(--primary); font-weight: 600; }
+  .top-links { display: flex; align-items: center; gap: 4px; }
+  .link-btn { border: none; background: none; color: var(--text-2); font-size: 12.5px; font-weight: 500; padding: 6px 8px; cursor: pointer; border-radius: 6px; }
+  .link-btn:hover { color: var(--primary); background: var(--surface-subtle); }
+  .lang-toggle { display: flex; background: var(--surface-map); border-radius: 8px; padding: 2px; }
+  .lang-toggle button { border: none; background: transparent; color: var(--text-2); padding: 5px 10px; font-size: 12px; font-weight: 600; cursor: pointer; border-radius: 6px; }
+  .lang-toggle button.active { background: var(--primary); color: var(--on-primary); }
 
-  .mode-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-  .mode-toggle { display: flex; background: #0d2a5a; border-radius: 8px; overflow: hidden; }
-  .mode-toggle button { border: none; background: transparent; color: #cfd8d1; padding: 8px 16px; font-size: 13px; font-weight: 700; cursor: pointer; }
-  .mode-toggle button.active { background: #d4a017; color: #14418b; }
-
-  .controls { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-  .control-group { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
-  .control-group label { color: #cfd8d1; }
-  select { padding: 4px 8px; border-radius: 5px; border: none; font-size: 13px; }
-  #year-label, #year-range-label { font-size: 15px; font-weight: 700; min-width: 40px; text-align: center; background: #d4a017; color: #14418b; border-radius: 6px; padding: 2px 8px; }
-  input[type=range] { width: 170px; }
-  .checkbox-group { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #cfd8d1; }
-
+  /* ---- layout: left panel + map ---- */
   #main { flex: 1; display: flex; min-height: 0; }
-  /* #map-wrap is the actual flex item now (sized like #map used to be);
-     #map fills it via absolute positioning so the search box below can be
-     a plain sibling div layered on top, instead of fighting Leaflet's own
-     container/control machinery. Deliberately NOT a Leaflet control --
-     that approach caused real fragility before, so this is a plain,
-     always-in-the-DOM HTML element with a native <input list> for
-     autocomplete (the browser handles the matching/dropdown UI itself). */
-  #map-wrap { flex: 1 1 62%; position: relative; min-width: 0; }
-  #map { position: absolute; inset: 0; }
-  #orp-search-box { position: absolute; top: 12px; right: 12px; z-index: 500; background: #fff; border-radius: 8px; box-shadow: 0 1px 5px rgba(0,0,0,0.4); width: 220px; display: flex; align-items: center; gap: 8px; padding: 8px 10px; }
-  #orp-search-box .orp-search-icon { font-size: 13px; opacity: 0.55; }
-  #orp-search-input { border: none; outline: none; font-size: 13px; flex: 1; min-width: 0; background: transparent; }
-  #panel { flex: 1 1 38%; max-width: 440px; padding: 16px 18px; overflow-y: auto; background: #f7f6f2; border-left: 1px solid #ddd; }
-  /* Extra top clearance so whatever renders first -- the h2 title and its
-     floated "Back to Czech Republic" pill, or the Compare Years card in
-     Change-over-Time mode -- never starts underneath the close button. It
-     gets its own clear row instead of fighting for the same corner. */
-  #panel { padding-top: 46px; }
-  #panel h2 { margin: 0 0 4px; font-size: 18px; }
-  #panel .sub { color: #666; font-size: 12.5px; margin-bottom: 10px; }
-  #panel .placeholder { color: #888; font-size: 14px; line-height: 1.6; }
+  #panel { flex: 0 0 34%; max-width: 460px; min-width: 340px; background: var(--surface); border-right: 1px solid var(--border); overflow-y: auto; }
+  #map-wrap { flex: 1 1 auto; position: relative; min-width: 0; }
+  #map { position: absolute; inset: 0; background: var(--surface-map); }
 
-  .card { background: white; border-radius: 8px; padding: 12px 14px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 12px; }
-  .card h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: #14418b; }
-  .stat-box { font-size: 13px; line-height: 1.75; }
-  .stat-box b { color: #14418b; }
-  .index-badge { display: inline-block; font-size: 22px; font-weight: 800; padding: 4px 10px; border-radius: 8px; color: #fff; }
+  /* ---- panel ---- */
+  .panel-search { padding: 16px 20px 6px; }
+  #orp-search-box { display: flex; align-items: center; gap: 10px; border: 1.5px solid var(--border); border-radius: 12px; padding: 0 14px; background: var(--surface); height: 46px; }
+  #orp-search-box:focus-within { border-color: var(--primary); }
+  #orp-search-box svg { flex: 0 0 auto; color: var(--primary); }
+  #orp-search-input { border: none; outline: none; font-size: 14.5px; flex: 1; min-width: 0; background: transparent; color: var(--text); }
+  #panel-content { padding: 0 0 24px; }
+  #panel-content .placeholder { color: var(--text-2); font-size: 14px; line-height: 1.6; padding: 12px 20px; }
+  .p-crumbs { padding: 12px 20px 0; font-size: 12.5px; font-weight: 600; color: var(--primary); }
+  .p-crumbs a { color: var(--primary); cursor: pointer; text-decoration: none; }
+  .p-crumbs a:hover { text-decoration: underline; }
+  .p-crumbs .sep { color: var(--text-2); margin: 0 4px; }
+  .p-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 14px 20px 16px; }
+  .p-head h2 { margin: 0; font-size: 30px; line-height: 1.1; font-weight: 700; letter-spacing: -0.01em; }
+  .p-sub { margin-top: 6px; font-size: 13px; color: var(--text-2); }
+  .p-sub b { color: var(--primary); font-weight: 600; }
+  .p-indicator { display: inline-block; margin-top: 10px; font-size: 14px; font-weight: 500; color: var(--primary); border-bottom: 2px solid var(--mint); line-height: 1.35; }
+  .p-badge { flex: 0 0 auto; min-width: 118px; text-align: center; border-radius: 14px; padding: 12px 14px 10px; background: var(--surface-map); color: var(--text); }
+  .p-badge b { display: block; font-size: 32px; line-height: 1; font-weight: 700; }
+  .p-badge small { display: block; margin-top: 4px; font-size: 12px; font-weight: 600; }
+  .p-badge.neg { background: var(--chg-neg-soft); }
+  .p-badge.pos { background: var(--chg-pos-soft); }
+  .p-section { border-top: 1px solid var(--border); padding: 18px 20px; }
+  .p-section-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+  .p-section h3 { margin: 0; font-size: 18px; font-weight: 700; color: var(--text); }
+  .p-section .p-sub2 { font-size: 12.5px; color: var(--text-2); margin-top: 2px; }
+  .kv { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 9px 0; font-size: 14.5px; }
+  .kv span:first-child { color: var(--text-2); }
+  .kv span:last-child { font-weight: 600; text-align: right; }
+  .kv-note { margin-top: 10px; font-size: 12.5px; line-height: 1.55; color: var(--text-2); }
+  .chev-btn { border: none; background: none; cursor: pointer; color: var(--text); padding: 4px; border-radius: 6px; display: inline-flex; }
+  .chev-btn svg { transition: transform .2s; }
+  .p-section.collapsed .chev-btn svg { transform: rotate(180deg); }
+  .p-section.collapsed .p-body { display: none; }
+  .head-actions { display: flex; align-items: center; gap: 6px; }
 
-  .trend-up { color: #1f7a3d; font-weight: 700; }
-  .trend-down { color: #b23a2e; font-weight: 700; }
-  .trend-flat { color: #888; font-weight: 700; }
-
-  .legend { background: white; padding: 10px 12px; border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,0.25); font-size: 12px; line-height: 1.7; min-width: 168px; }
-  .legend strong { display: block; margin-bottom: 4px; font-size: 12.5px; }
-  .swatch { display: inline-block; width: 13px; height: 13px; border-radius: 3px; margin-right: 7px; vertical-align: middle; border: 1px solid rgba(0,0,0,0.15); }
-  .legend .gradient-bar { height: 12px; border-radius: 3px; margin: 4px 0; }
-  .legend .gradient-labels { display: flex; justify-content: space-between; font-size: 11px; color: #555; }
-  .legend .na-note { color: #888; font-size: 11px; margin-top: 4px; }
-
-  .leaderboard { font-size: 12.5px; }
-  .leaderboard table { width: 100%; border-collapse: collapse; }
-  .leaderboard th { text-align: left; font-size: 11px; text-transform: uppercase; color: #888; padding: 3px 4px; border-bottom: 1px solid #eee; }
-  .leaderboard td { padding: 4px 4px; border-bottom: 1px solid #f2f2f2; cursor: pointer; }
-  .leaderboard tr:hover td { background: #f7f6f2; }
-  .leaderboard .val-up { color: #1f7a3d; font-weight: 700; }
-  .leaderboard .val-down { color: #b23a2e; font-weight: 700; }
-
-  .na-cell { color: #aaa; font-style: italic; }
+  .card { background: var(--surface); border-top: 1px solid var(--border); padding: 18px 20px; margin: 0; }
+  .card h3 { margin: 0 0 8px; font-size: 16px; font-weight: 700; color: var(--text); }
+  .stat-box { font-size: 14px; line-height: 1.75; }
+  .sub { color: var(--text-2); font-size: 12.5px; line-height: 1.5; }
+  .index-badge { display: inline-block; font-size: 22px; font-weight: 700; padding: 4px 10px; border-radius: 8px; color: #fff; }
+  .trend-up { color: var(--chg-pos-strong); font-weight: 600; }   /* increase = blue (G8) */
+  .trend-down { color: var(--chg-neg-strong); font-weight: 600; } /* decrease = red (G8) */
+  .trend-flat { color: var(--text-2); font-weight: 600; }
   .chart-wrap { position: relative; }
-  .info-icon { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; border-radius: 50%; background: #cfd8d1; color: #14418b; font-size: 10px; font-weight: 800; cursor: help; margin-left: 4px; }
-
-  .leaflet-tooltip { font-size: 12px; line-height: 1.6; }
   .pie-wrap { display: flex; align-items: center; gap: 14px; }
   .pie-wrap canvas { max-width: 130px; max-height: 130px; }
-  .pie-legend { font-size: 12px; line-height: 1.9; }
+  .pie-legend { font-size: 12.5px; line-height: 1.9; }
+  .swatch { display: inline-block; width: 13px; height: 13px; border-radius: 3px; margin-right: 7px; vertical-align: middle; border: 1px solid rgba(0,0,0,0.15); }
 
-  #tour-open-btn { border: none; background: #d4a017; color: #14418b; border-radius: 6px; padding: 6px 12px; font-size: 12.5px; font-weight: 700; cursor: pointer; }
-  /* Docked left column, mirroring the right-hand #panel, instead of a
-     floating card over the map -- takes real layout space (so #map's own
-     flex:1 naturally shrinks to make room) rather than overlapping map
-     content. */
-  #tour-overlay { display: none; flex: 0 0 340px; max-width: 40vw; background: #fff; border-right: 1px solid #ddd; overflow-y: auto; }
+  .leaderboard { font-size: 13px; }
+  .leaderboard table { width: 100%; border-collapse: collapse; }
+  .leaderboard th { text-align: left; font-size: 12px; color: var(--text-2); padding: 4px 4px; border-bottom: 1px solid var(--border); font-weight: 600; }
+  .leaderboard td { padding: 5px 4px; border-bottom: 1px solid var(--surface-canvas); cursor: pointer; }
+  .leaderboard tr:hover td { background: var(--surface-subtle); }
+  .leaderboard tr.sel-row td { font-weight: 700; background: var(--surface-subtle); }
+  .leaderboard .val-up { color: var(--chg-pos-strong); font-weight: 600; }
+  .leaderboard .val-down { color: var(--chg-neg-strong); font-weight: 600; }
+  .leaderboard .val-flat { color: var(--text-2); font-weight: 600; }
+  .leaderboard .val-neutral { color: var(--text); font-weight: 600; }
+
+  /* ---- info icon + popover ---- */
+  .info-icon { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 1.5px solid #9aa8a4; border-radius: 50%; background: var(--surface); color: var(--text-2); font: italic 700 13px Georgia, "Times New Roman", serif; text-transform: none; line-height: 1; cursor: pointer; vertical-align: middle; }
+  .info-icon:hover { border-color: var(--primary); color: var(--primary); }
+  .info-icon:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+  .legend .info-icon, .flabel .info-icon { width: 18px; height: 18px; font-size: 11px; margin-left: 4px; }
+  #info-popover { position: fixed; z-index: 4000; width: 300px; max-width: calc(100vw - 16px); max-height: 70vh; overflow-y: auto; background: #fff; color: var(--text); border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,0.25); padding: 14px 34px 14px 16px; font-size: 12.5px; line-height: 1.55; font-weight: 400; }
+  #info-popover h4 { margin: 8px 0 2px; font-size: 11.5px; color: var(--primary); }
+  #info-popover h4:first-child { margin-top: 0; }
+  #info-popover p { margin: 0; }
+  #info-popover details { margin-top: 8px; }
+  #info-popover summary { cursor: pointer; font-size: 11.5px; font-weight: 700; color: var(--primary); }
+  #info-popover details p { margin-top: 4px; }
+  .info-popover-close { position: absolute; top: 4px; right: 6px; border: none; background: none; font-size: 20px; line-height: 1; color: #888; cursor: pointer; }
+
+  /* ---- filter card over the map ---- */
+  #filter-card { position: absolute; top: 16px; left: 16px; right: 16px; z-index: 600; background: var(--surface); border-radius: 16px; box-shadow: 0 2px 14px rgba(0,0,0,0.12); padding: 14px 18px 16px; display: flex; flex-wrap: wrap; gap: 14px 18px; align-items: flex-end; }
+  .fgroup { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .flabel { font-size: 12px; font-weight: 500; color: var(--text-2); display: flex; align-items: center; }
+  .fgroup select { height: 42px; padding: 0 34px 0 12px; border: 1.5px solid var(--border); border-radius: 10px; background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23007270' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 11px center; -webkit-appearance: none; appearance: none; font-size: 14px; color: var(--text); cursor: pointer; max-width: 280px; }
+  .fgroup select:focus { outline: none; border-color: var(--primary); }
+  .range-row { display: flex; align-items: center; gap: 6px; color: var(--text-2); }
+  .seg { display: inline-flex; background: var(--surface-map); border-radius: 12px; padding: 4px; }
+  .seg button { border: none; background: transparent; color: var(--text-2); font-size: 14px; font-weight: 600; padding: 8px 14px; border-radius: 9px; cursor: pointer; white-space: nowrap; }
+  .seg button.active { background: var(--primary); color: var(--on-primary); }
+  .factions { display: flex; gap: 10px; margin-left: auto; align-items: center; flex-wrap: wrap; }
+  .btn-outline, .btn-primary { height: 42px; padding: 0 20px; border-radius: 10px; font-size: 14.5px; font-weight: 600; cursor: pointer; }
+  .btn-outline { background: var(--surface); color: var(--primary); border: 1.5px solid var(--primary); }
+  .btn-outline:hover { background: var(--surface-map); }
+  .btn-primary { background: var(--primary); color: var(--on-primary); border: 1.5px solid var(--primary); }
+  .btn-primary:hover { background: #005b59; }
+  #raster-opacity-group { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); }
+  input[type=range] { accent-color: var(--primary); width: 110px; }
+
+  /* ---- map overlays ---- */
+  .legend { background: white; padding: 12px 14px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.15); font-size: 12.5px; line-height: 1.6; min-width: 230px; color: var(--text); }
+  .legend strong { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 600; }
+  .legend .gradient-bar { height: 12px; border-radius: 6px; margin: 4px 0; }
+  .legend .gradient-labels { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--text-2); }
+  .legend .gradient-labels > span { line-height: 1.35; }
+  .legend .gradient-labels > span:first-child { text-align: left; }
+  .legend .gradient-labels > span:last-child { text-align: right; }
+  .legend .gradient-labels > span:nth-child(2) { text-align: center; align-self: flex-start; }
+  .legend .gradient-labels small { display: block; font-size: 11px; color: var(--text-2); opacity: .9; }
+  .legend .na-note { color: var(--text-2); font-size: 11.5px; margin-top: 4px; }
+  .leaflet-tooltip { font-size: 12.5px; line-height: 1.6; border-radius: 8px; }
+  .sel-pill { background: #fff; color: var(--text); border-radius: 18px; padding: 5px 12px; font-size: 13px; font-weight: 600; box-shadow: 0 1px 6px rgba(0,0,0,0.3); white-space: nowrap; width: auto !important; height: auto !important; transform: translate(-50%, -50%); }
+  .sel-pill i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--primary); margin-right: 6px; }
+  .leaflet-control-zoom a { color: var(--primary) !important; }
+
+  /* ---- raster tour: floating card over the map ---- */
+  #tour-overlay { display: none; position: absolute; left: 16px; bottom: 16px; top: 190px; z-index: 650; width: 340px; max-width: calc(100% - 32px); background: #fff; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.25); overflow-y: auto; }
   #tour-card { position: relative; display: flex; flex-direction: column; min-height: 100%; width: 100%; }
-  #tour-img { width: 100%; height: 200px; object-fit: cover; display: block; background: #ddd; flex-shrink: 0; }
-  /* Solid white (not translucent-on-photo) so it reads clearly regardless
-     of how light or dark the card's own photo happens to be. */
-  #tour-close-btn { position: absolute; top: 10px; right: 10px; z-index: 10; background: #fff; color: #14418b; border: none; border-radius: 50%; width: 32px; height: 32px; font-size: 19px; font-weight: 700; line-height: 1; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.35); }
-  #tour-close-btn:hover { background: #14418b; color: #fff; }
+  #tour-img { width: 100%; height: 190px; object-fit: cover; display: block; background: #ddd; flex-shrink: 0; border-radius: 16px 16px 0 0; }
+  #tour-close-btn { position: absolute; top: 10px; right: 10px; z-index: 10; background: #fff; color: var(--primary); border: none; border-radius: 50%; width: 32px; height: 32px; font-size: 19px; font-weight: 700; line-height: 1; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.35); }
+  #tour-close-btn:hover { background: var(--primary); color: #fff; }
   #tour-card-body { padding: 14px 16px 6px; flex: 1 1 auto; }
-  #tour-counter { font-size: 11px; font-weight: 700; color: #999; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
-  #tour-card-title { margin: 0 0 8px; font-size: 15px; font-weight: 700; color: #14418b; }
+  #tour-counter { font-size: 11px; font-weight: 700; color: #999; letter-spacing: .04em; margin-bottom: 4px; }
+  #tour-card-title { margin: 0 0 8px; font-size: 15px; font-weight: 700; color: var(--primary); }
   #tour-card-desc { margin: 0; font-size: 12.5px; line-height: 1.65; color: #333; }
-  #tour-jump { width: 100%; margin: 14px 0 0; font-size: 11.5px; }
+  #tour-jump { width: 100%; margin: 14px 0 0; font-size: 12px; }
   #tour-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 16px 16px; flex-shrink: 0; }
-  #tour-nav button { border: none; background: #14418b; color: #fff; border-radius: 6px; padding: 6px 11px; font-size: 12px; font-weight: 700; cursor: pointer; }
+  #tour-nav button { border: none; background: var(--primary); color: #fff; border-radius: 8px; padding: 7px 12px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
   #tour-nav button:disabled { opacity: 0.35; cursor: default; }
 
-  #raster-clear-btn { border: none; background: #0d2a5a; color: #cfd8d1; border-radius: 50%; width: 22px; height: 22px; font-size: 14px; line-height: 1; cursor: pointer; align-items: center; justify-content: center; }
-  #raster-clear-btn:hover { background: #3a3a3a; color: #fff; }
-
-  #panel { position: relative; transition: flex-basis 0.25s ease, max-width 0.25s ease, padding 0.25s ease, opacity 0.2s ease; }
-  #panel.collapsed { flex: 0 0 0 !important; max-width: 0 !important; padding: 0 !important; border-left: none !important; overflow: hidden; opacity: 0; }
-  /* Close lives inside the panel itself (top-right, like the info/tour
-     modals) instead of a header button -- less header clutter, and the
-     control sits right next to what it closes. */
-  #panel-close-btn { position: absolute; top: 10px; right: 10px; z-index: 10; background: #fff; border: 1px solid #ddd; color: #14418b; border-radius: 50%; width: 32px; height: 32px; font-size: 19px; font-weight: 700; line-height: 1; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
-  #panel-close-btn:hover { background: #14418b; color: #fff; border-color: #14418b; }
-  /* Reopening the collapsed panel: a slim tab docked to the right edge of
-     the viewport, like a drawer handle -- only shown while the panel is
-     collapsed. Styled white/shadowed to match Leaflet's own zoom control
-     rather than the app's dark header theme, so it visually reads as part
-     of the map's own control set. */
-  #panel-reopen-btn { position: fixed; top: 50%; right: 12px; transform: translateY(-50%); z-index: 500; background: #fff; color: #14418b; border: none; border-radius: 6px; width: 30px; height: 46px; font-size: 18px; cursor: pointer; box-shadow: 0 1px 5px rgba(0,0,0,0.4); }
-  #panel-reopen-btn:hover { background: #f2f2ee; }
-
-  /* Small discrete header icon buttons -- "i" reopens the About modal,
-     "?" opens the Contact modal. Same circular treatment as the raster
-     clear "x" button elsewhere in the header. */
-  .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; border: none; background: #0d2a5a; color: #cfd8d1; font-size: 13px; font-weight: 800; cursor: pointer; }
-  .icon-btn:hover { background: #17499d; color: #fff; }
-
-  /* Full-screen dark veil with a centered card -- used both for the
-     one-time About/intro modal (shown on first visit, reopenable from
-     the "i" header icon) and the Contact modal ("?" header icon). */
-  .modal-overlay { position: fixed; inset: 0; z-index: 3000; background: rgba(10, 16, 12, 0.78); display: flex; align-items: center; justify-content: center; padding: 24px; }
-  .modal-card { position: relative; background: #fff; border-radius: 12px; max-width: 620px; width: 100%; max-height: 85vh; overflow: hidden; padding: 0; box-shadow: 0 20px 60px rgba(0,0,0,0.45); display: flex; flex-direction: column; }
-  /* PIN-branded header band on the opening (About) card -- solid PIN Blue
-     with the white logo, matching the org's own brand guide (blue as the
-     primary identity color, logo always on a calm contrasting background). */
-  .modal-logo-band { flex: 0 0 auto; background: #14418b; padding: 22px 36px; text-align: center; }
+  /* ---- modals ---- */
+  .modal-overlay { position: fixed; inset: 0; z-index: 3000; background: rgba(10, 16, 12, 0.7); display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .modal-card { position: relative; background: #fff; border-radius: 16px; max-width: 640px; width: 100%; max-height: 86vh; overflow: hidden; padding: 0; box-shadow: 0 20px 60px rgba(0,0,0,0.45); display: flex; flex-direction: column; }
+  .modal-logo-band { flex: 0 0 auto; background: var(--primary); padding: 22px 36px; text-align: center; }
   .modal-logo-band img { height: 38px; width: auto; }
   .modal-card-body { overflow-y: auto; padding: 28px 36px 28px; }
-  .modal-eyebrow { display: block; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #d4a017; margin-bottom: 8px; }
-  .modal-card h2 { margin: 0 0 16px; font-size: 24px; line-height: 1.25; color: #14418b; }
+  .modal-eyebrow { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--primary); margin-bottom: 8px; }
+  .modal-card h2 { margin: 0 0 16px; font-size: 24px; line-height: 1.25; color: var(--text); }
   .modal-card p { margin: 0 0 12px; font-size: 13.5px; line-height: 1.65; color: #333; }
-  .modal-card p a { color: #14418b; font-weight: 700; }
-  .modal-card p.modal-credits { margin-top: 18px; padding-top: 14px; border-top: 1px solid #eee; font-size: 12px; color: #777; }
+  .modal-card p a { color: var(--primary); font-weight: 600; }
+  .modal-card p.modal-credits { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-2); }
   .modal-close-btn { position: absolute; top: 14px; right: 16px; background: none; border: none; color: #999; font-size: 22px; line-height: 1; cursor: pointer; padding: 2px 8px; }
-  .modal-close-btn:hover { color: #14418b; }
-  .modal-continue-btn { display: inline-block; margin-top: 6px; border: none; background: #d4a017; color: #14418b; border-radius: 8px; padding: 10px 22px; font-size: 13.5px; font-weight: 700; cursor: pointer; }
-  .modal-continue-btn:hover { background: #c29414; }
+  .modal-close-btn:hover { color: var(--primary); }
+  .modal-continue-btn { display: inline-block; margin-top: 6px; border: none; background: var(--primary); color: #fff; border-radius: 10px; padding: 10px 22px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .modal-continue-btn:hover { background: #005b59; }
+  .dl-list { display: flex; flex-direction: column; gap: 10px; margin: 14px 0 6px; }
+  .dl-item { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 14px; border: 1.5px solid var(--border); border-radius: 12px; }
+  .dl-item div b { display: block; font-size: 14px; }
+  .dl-item div span { font-size: 12.5px; color: var(--text-2); }
+  .dl-item .btn-primary { height: 36px; padding: 0 16px; font-size: 13.5px; flex: 0 0 auto; }
+  .method-h { margin: 18px 0 6px; font-size: 15px; font-weight: 700; color: var(--primary); }
+
+  /* ---- mobile-only elements (hidden on desktop) ---- */
+  #menu-btn, #filter-chip, #sheet-handle, #panel-actions { display: none; }
+
+  /* ---- mobile layout (colleagues' mockups): header + hamburger, filter chip,
+         map, legend, bottom sheet with accordions + CSV / share buttons ---- */
+  @media (max-width: 900px) {
+    #app { height: 100vh; height: 100dvh; }
+    #topbar { position: relative; padding: 8px 14px; min-height: 60px; z-index: 3500; }
+    .brand-mark { width: 40px; height: 40px; }
+    #app-title { font-size: 17px; }
+    #app-subtitle { font-size: 11px; }
+    #menu-btn { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 44px; height: 44px; border: none; background: none; color: var(--primary); cursor: pointer; border-radius: 10px; }
+    #menu-btn:active { background: var(--surface-map); }
+    .top-right { display: none; position: absolute; top: 100%; left: 0; right: 0; flex-direction: column; align-items: stretch; gap: 10px; padding: 12px 16px 16px; background: var(--surface); border-bottom: 1px solid var(--border); box-shadow: 0 10px 24px rgba(0,0,0,0.14); }
+    #topbar.menu-open .top-right { display: flex; }
+    #topnav { flex-direction: column; align-items: stretch; }
+    .nav-tab { text-align: left; font-size: 16px; padding: 12px 12px; }
+    .top-links { justify-content: flex-start; }
+    .link-btn { font-size: 14px; padding: 10px; }
+    .lang-toggle { align-self: flex-start; }
+
+    #main { position: relative; display: block; }
+    #map-wrap { position: absolute; inset: 0; }
+
+    /* filter chip -> expandable filter card */
+    #filter-chip { display: flex; align-items: center; gap: 10px; position: absolute; top: 10px; left: 10px; right: 10px; z-index: 610; height: 48px; padding: 0 14px; background: var(--surface); border: none; border-radius: 14px; box-shadow: 0 2px 12px rgba(0,0,0,0.16); color: var(--text); font-size: 13.5px; font-weight: 500; cursor: pointer; text-align: left; }
+    #filter-chip svg { flex: 0 0 auto; color: var(--primary); }
+    #filter-chip-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #filter-chip .chip-chev { transition: transform .2s; }
+    #filter-card-open #filter-chip .chip-chev, body.filters-open #filter-chip .chip-chev { transform: rotate(180deg); }
+    #filter-card { display: none; position: absolute; top: 66px; left: 10px; right: 10px; z-index: 820; max-height: calc(100% - 78px); overflow-y: auto; flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 14px; padding: 14px; }
+    body.filters-open #filter-card { display: flex; }
+    #filter-card .fgroup { width: 100%; }
+    #filter-card .fgroup select { width: 100%; max-width: none; }
+    #filter-card .seg { display: flex; }
+    #filter-card .seg button { flex: 1; padding: 10px 8px; white-space: normal; }
+    #filter-card .range-row select { flex: 1; }
+    #filter-card .panel-search { padding: 0; }
+    .factions { margin-left: 0; width: 100%; }
+    .factions .btn-outline, .factions .btn-primary { flex: 1; }
+    #raster-opacity-group { flex-wrap: wrap; }
+    input[type=range] { flex: 1; }
+
+    /* bottom sheet */
+    #panel { position: absolute; left: 0; right: 0; bottom: 0; z-index: 700; width: auto; max-width: none; min-width: 0; flex: none; height: 250px; border-right: none; border-radius: 22px 22px 0 0; box-shadow: 0 -6px 24px rgba(0,0,0,0.18); overflow-y: auto; overscroll-behavior: contain; transition: height .22s ease; }
+    #panel.dragging { transition: none; }
+    #sheet-handle { display: block; position: sticky; top: 0; z-index: 5; height: 26px; padding-top: 9px; background: var(--surface); border-radius: 22px 22px 0 0; cursor: grab; touch-action: none; }
+    #sheet-handle::before { content: ""; display: block; width: 44px; height: 5px; margin: 0 auto; border-radius: 3px; background: #cfd6d3; }
+    .panel-search { display: none; }
+    .p-crumbs { padding-top: 2px; font-size: 15px; }
+    .p-head { padding: 10px 16px 14px; }
+    .p-head h2 { font-size: 28px; }
+    .p-badge { min-width: 0; padding: 10px 12px 8px; }
+    .p-badge b { font-size: 26px; }
+    .p-section, .card { padding: 14px 16px; }
+    .kv { font-size: 14px; }
+
+    /* accordions (sections after the key numbers) */
+    .m-acc > h3, .m-acc > .p-section-head { cursor: pointer; }
+    .card.m-acc > h3 { position: relative; padding-right: 34px; margin: 0; font-size: 18px; }
+    .card.m-acc > h3::after { content: ""; position: absolute; right: 2px; top: 50%; width: 20px; height: 20px; margin-top: -10px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23202B29' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 15l6-6 6 6'/%3E%3C/svg%3E") no-repeat center; transition: transform .2s; }
+    .card.m-acc.collapsed > h3::after { transform: rotate(180deg); }
+    .card.m-acc.collapsed > :not(h3) { display: none; }
+    .card.m-acc:not(.collapsed) > h3 { margin-bottom: 10px; }
+
+    #panel-actions { display: flex; flex-direction: column; gap: 10px; padding: 16px 16px 28px; border-top: 1px solid var(--border); }
+    #panel-actions button { display: flex; align-items: center; justify-content: center; gap: 10px; height: 50px; border-radius: 12px; font-size: 15px; font-weight: 600; cursor: pointer; }
+    #panel-actions .btn-primary { height: 50px; }
+    #panel-actions .btn-outline { height: 50px; }
+
+    /* map controls sit above the sheet */
+    .leaflet-control-zoom { display: none; }
+    .leaflet-bottom { bottom: var(--sheet-h, 250px); transition: bottom .22s ease; }
+    body.sheet-full .leaflet-bottom { display: none; }
+    .leaflet-bottom.leaflet-right { left: 0; }
+    .leaflet-bottom.leaflet-right .leaflet-control { float: none; margin: 0 10px 10px; }
+    .legend { min-width: 0; padding: 12px 16px; }
+    .legend strong { font-size: 16px; font-weight: 500; }
+    .leaflet-control-scale { margin-bottom: 96px !important; }
+
+    #tour-overlay { left: 8px; right: 8px; width: auto; max-width: none; bottom: 8px; z-index: 900; }
+    .modal-overlay { padding: 10px; }
+    .modal-card-body { padding: 22px 20px; }
+    .modal-logo-band { padding: 16px 20px; }
+    .dl-item { flex-direction: column; align-items: stretch; }
+    #info-popover { width: calc(100vw - 20px); }
+  }
 </style>
 </head>
 <body>
@@ -164,9 +293,9 @@
       <button class="modal-close-btn" onclick="closeIntro()" title="Close" aria-label="Close">&times;</button>
       <div class="modal-logo-band"><img src="pin_logo_white.png" alt="People in Need"></div>
       <div class="modal-card-body">
-        <span class="modal-eyebrow" data-i18n="intro_eyebrow">Ekosystémová integrita krajiny</span>
-        <h2 data-i18n="intro_title">O tomto nástroji</h2>
-        <p data-i18n="intro_body1">Dashboard zobrazuje Ekosystémovou integritu krajiny (RIEI) pro každou obec s rozšířenou působností v České republice, každoročně od roku 2017 do 2025. Index vychází ze tří nezávislých družicových ukazatelů -- fotosyntetického potenciálu, chladicí schopnosti vegetace a krajinné pestrosti -- které se kombinují do jedné souhrnné hodnoty.</p>
+        <span class="modal-eyebrow" data-i18n="intro_eyebrow">Index ekosystémové integrity (IEI)</span>
+        <h2 data-i18n="intro_title">O datech</h2>
+        <p data-i18n="intro_body1">Dashboard zobrazuje Index ekosystémové integrity (IEI) pro každou obec s rozšířenou působností (ORP) v České republice, každoročně od roku 2017 do 2025. Index vychází ze tří nezávislých družicových ukazatelů -- fotosyntetického potenciálu, chladicí schopnosti vegetace a krajinné pestrosti -- které se kombinují do jedné souhrnné hodnoty.</p>
         <p data-i18n="intro_body2">Nástroj je určený zemědělcům, lesníkům, poradcům, samosprávám i ochraně přírody jako podklad pro sledování stavu krajiny v čase a rozhodování o jejím lepším hospodaření.</p>
         <button class="modal-continue-btn" onclick="closeIntro()" data-i18n="intro_continue">Pokračovat na dashboard</button>
         <p class="modal-credits"><span data-i18n="intro_reference">Metodika: Zelený, J., Mercado-Bettín, D., &amp; Müller, F. (2021). Towards the evaluation of regional ecosystem integrity using NDVI, brightness temperature and surface heterogeneity. Science of the Total Environment, 796, Article 148994.</span> <a href="https://doi.org/10.1016/j.scitotenv.2021.148994">https://doi.org/10.1016/j.scitotenv.2021.148994</a></p>
@@ -186,10 +315,21 @@
       </div>
     </div>
   </div>
+  <div id="method-banner" class="modal-overlay" style="display:none;">
+    <div class="modal-card">
+      <button class="modal-close-btn" onclick="closeMethod()" title="Close" aria-label="Close">&times;</button>
+      <div class="modal-card-body" id="method-body"></div>
+    </div>
+  </div>
+  <div id="data-banner" class="modal-overlay" style="display:none;">
+    <div class="modal-card">
+      <button class="modal-close-btn" onclick="closeData()" title="Close" aria-label="Close">&times;</button>
+      <div class="modal-card-body" id="data-body"></div>
+    </div>
+  </div>
   <script>
-    // Runs immediately during parsing (before the rest of the page even
-    // renders) so a returning visitor who already dismissed the About
-    // modal never sees it flash on screen first.
+    // Runs immediately during parsing so a returning visitor who already
+    // dismissed the About modal never sees it flash on screen first.
     (function () {
       try {
         if (localStorage.getItem("eih_intro_dismissed") !== "1") {
@@ -200,93 +340,120 @@
       }
     })();
   </script>
-  <header>
-    <div class="header-top">
-      <h1 id="app-title">Ekosystémová integrita krajiny — Multi-Year Dashboard</h1>
-      <div class="lang-toggle">
-        <button id="lang-cz" class="active" onclick="setLang('cz')">CZ</button>
-        <button id="lang-en" onclick="setLang('en')">EN</button>
+
+  <header id="topbar">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="18" fill="#007270"/><path d="M11 24c0-7 5-12 14-12 0 8-5 13-12 13-1 0-2-.3-2-1z" fill="#A0D4C6"/></svg>
+      <div class="brand-text">
+        <h1 id="app-title">Portál zdraví krajiny</h1>
+        <span id="app-subtitle">indikátory regionální ekosystémové integrity</span>
       </div>
     </div>
-    <div class="mode-row">
-      <div class="mode-toggle">
-        <button id="mode-current" class="active" onclick="setMode('current')" data-i18n="mode_current">Aktuální stav</button>
-        <button id="mode-change" onclick="setMode('change')" data-i18n="mode_change">Změna v čase</button>
+    <button type="button" id="menu-btn" aria-label="Menu" aria-expanded="false" aria-controls="top-right-menu">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
+    </button>
+    <div class="top-right" id="top-right-menu">
+      <nav id="topnav">
+        <button class="nav-tab active" id="nav-map" onclick="showView('map')" data-i18n="nav_map">Mapa</button>
+        <button class="nav-tab" id="nav-about" onclick="openIntro()" data-i18n="nav_about">O datech</button>
+        <button class="nav-tab" id="nav-method" onclick="openMethod()" data-i18n="nav_method">Metodika</button>
+        <button class="nav-tab" id="nav-data" onclick="openData()" data-i18n="nav_data">Data ke stažení</button>
+      </nav>
+      <div class="top-links">
+        <button class="link-btn" id="help-btn" onclick="openIntro()" data-i18n="help_button">Nápověda</button>
+        <button class="link-btn" id="contact-btn" onclick="openContact()" data-i18n="contact_button">Kontakt</button>
       </div>
-
-      <div class="control-group" id="display-group">
-        <label data-i18n="display_label">Zobrazit:</label>
-        <select id="display-select"></select>
-      </div>
-
-      <div class="control-group" id="current-year-group">
-        <label data-i18n="year_label">Rok:</label>
-        <input type="range" id="year-slider" min="0" max="8" step="1" value="8">
-        <span id="year-label">2025</span>
-      </div>
-
-      <div class="control-group" id="raster-group">
-        <label for="raster-select" data-i18n="raster_label">Rastrová vrstva:</label>
-        <select id="raster-select"></select>
-        <span class="checkbox-group" id="raster-opacity-group" style="display:none;">
-          <label for="raster-opacity" data-i18n="transparency_label">Průhlednost:</label>
-          <input type="range" id="raster-opacity" min="0.1" max="1" step="0.1" value="0.7">
-        </span>
-        <button id="raster-clear-btn" data-i18n-title="raster_clear_title" title="Vypnout rastr" aria-label="Vypnout rastr" style="display:none;">&times;</button>
-      </div>
-
-      <div class="control-group" id="tour-group">
-        <button id="tour-open-btn" onclick="openTour()" data-i18n="tour_button">Prohlídka rastrů</button>
-      </div>
-
-      <div class="control-group" id="header-icons-group" style="gap:8px;">
-        <button id="contact-btn" class="icon-btn" onclick="openContact()" data-i18n-title="contact_button" title="Kontakt" aria-label="Kontakt">?</button>
-        <button id="about-btn" class="icon-btn" onclick="openIntro()" data-i18n-title="about_button" title="O projektu" aria-label="O projektu">i</button>
+      <div class="lang-toggle">
+        <button id="lang-cz" class="active" onclick="setLang('cz')">Čeština</button>
+        <button id="lang-en" onclick="setLang('en')">English</button>
       </div>
     </div>
   </header>
 
   <div id="main">
-    <div id="tour-overlay" style="display:none;">
-      <div id="tour-card">
-        <button id="tour-close-btn" onclick="closeTour()" title="Close" aria-label="Close">&times;</button>
-        <img id="tour-img" src="" alt="">
-        <div id="tour-card-body">
-          <div id="tour-counter"></div>
-          <h3 id="tour-card-title"></h3>
-          <p id="tour-card-desc"></p>
-          <select id="tour-jump"></select>
-        </div>
-        <div id="tour-nav">
-          <button id="tour-prev-btn" onclick="tourPrev()">&larr; <span data-i18n="tour_prev">Předchozí</span></button>
-          <button id="tour-next-btn" onclick="tourNext()"><span data-i18n="tour_next">Další</span> &rarr;</button>
-        </div>
-      </div>
-    </div>
-    <div id="map-wrap">
-      <div id="map"></div>
-      <div id="orp-search-box">
-        <span class="orp-search-icon">&#128269;</span>
-        <input type="text" id="orp-search-input" list="orp-datalist" data-i18n-placeholder="search_placeholder" placeholder="Hledat ORP…" autocomplete="off">
-        <datalist id="orp-datalist"></datalist>
-      </div>
-    </div>
-    <div id="panel">
-      <button id="panel-close-btn" onclick="togglePanel()" data-i18n-title="hide_panel" title="Skrýt panel" aria-label="Skrýt panel">&times;</button>
-      <div class="card" id="range-year-group" style="display:none;">
-        <h3><span data-i18n="compare_years_title">Porovnání let</span> <span class="info-icon" data-i18n-title="compare_years_info" title="Toto porovnání ovlivňuje pouze tento režim „Změna v čase“ (graf, žebříček, karty níže). Neovlivňuje rastrové vrstvy ani režim „Snímek roku“, které používají svůj vlastní výběr roku.">i</span></h3>
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-          <label data-i18n="from_label" style="color:#666;font-size:12.5px;">Od:</label>
-          <select id="from-year-select"></select>
-          <label data-i18n="to_label" style="color:#666;font-size:12.5px;">Do:</label>
-          <select id="to-year-select"></select>
+    <aside id="panel">
+      <div id="sheet-handle" role="button" tabindex="0" aria-label="Panel"></div>
+      <div class="panel-search">
+        <div id="orp-search-box">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+          <input type="text" id="orp-search-input" list="orp-datalist" data-i18n-placeholder="search_placeholder" placeholder="Hledej ORP nebo kraj" autocomplete="off">
+          <datalist id="orp-datalist"></datalist>
         </div>
       </div>
       <div id="panel-content">
         <div class="placeholder" id="panel-placeholder" data-i18n="panel_placeholder">Klikněte na ORP na mapě pro zobrazení detailu.</div>
       </div>
+      <div id="panel-actions">
+        <button type="button" class="btn-primary" onclick="openData()"><span data-i18n="download_csv">Stáhnout data (CSV)</span>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg></button>
+        <button type="button" class="btn-outline" onclick="shareLink()"><span id="share-label" data-i18n="share_link">Sdílet odkaz</span>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+      </div>
+    </aside>
+
+    <div id="map-wrap">
+      <div id="map"></div>
+
+      <button type="button" id="filter-chip" aria-expanded="false" aria-controls="filter-card">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 3v18M12 3v18M19 3v18"/><circle cx="5" cy="9" r="2.4" fill="#fff"/><circle cx="12" cy="15" r="2.4" fill="#fff"/><circle cx="19" cy="8" r="2.4" fill="#fff"/></svg>
+        <span id="filter-chip-text"></span>
+        <svg class="chip-chev" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+
+      <div id="filter-card">
+        <div class="fgroup">
+          <span class="flabel" data-i18n="display_mode_label">Režim zobrazení</span>
+          <div class="seg">
+            <button id="mode-current" class="active" onclick="setMode('current')" data-i18n="mode_current">Roční přehled</button>
+            <button id="mode-change" onclick="setMode('change')" data-i18n="mode_change">Změna v čase (2017–2025)</button>
+          </div>
+        </div>
+        <div class="fgroup" id="current-year-group">
+          <label class="flabel" for="year-select" data-i18n="year_label">Rok</label>
+          <select id="year-select"></select>
+        </div>
+        <div class="fgroup" id="range-year-group" style="display:none;">
+          <span class="flabel"><span data-i18n="compare_years_title">Časový rozsah</span><button type="button" class="info-icon" data-info="compare" aria-label="Informace" aria-haspopup="dialog">i</button></span>
+          <div class="range-row">
+            <select id="from-year-select" aria-label="Od"></select><span>–</span><select id="to-year-select" aria-label="Do"></select>
+          </div>
+        </div>
+        <div class="fgroup">
+          <label class="flabel" for="display-select" data-i18n="parameter_label">Parametr</label>
+          <select id="display-select"></select>
+        </div>
+        <div class="fgroup" id="raster-group">
+          <label class="flabel" for="raster-select" data-i18n="raster_label">Rastrové vrstvy</label>
+          <select id="raster-select"></select>
+          <span id="raster-opacity-group" style="display:none;">
+            <label for="raster-opacity" data-i18n="transparency_label">Průhlednost</label>
+            <input type="range" id="raster-opacity" min="0.1" max="1" step="0.1" value="0.9">
+          </span>
+        </div>
+        <div class="factions">
+          <button class="btn-outline" id="tour-open-btn" onclick="openTour()" data-i18n="tour_button">Prohlídka rastrů</button>
+          <button class="btn-outline" id="reset-btn" onclick="resetView()" data-i18n="reset_button">Obnovit</button>
+          <button class="btn-primary" id="apply-btn" onclick="applyView()" data-i18n="apply_button">Zobrazit</button>
+        </div>
+      </div>
+
+      <div id="tour-overlay" style="display:none;">
+        <div id="tour-card">
+          <button id="tour-close-btn" onclick="closeTour()" title="Close" aria-label="Close">&times;</button>
+          <img id="tour-img" src="" alt="">
+          <div id="tour-card-body">
+            <div id="tour-counter"></div>
+            <h3 id="tour-card-title"></h3>
+            <p id="tour-card-desc"></p>
+            <select id="tour-jump"></select>
+          </div>
+          <div id="tour-nav">
+            <button id="tour-prev-btn" onclick="tourPrev()">&larr; <span data-i18n="tour_prev">Předchozí</span></button>
+            <button id="tour-next-btn" onclick="tourNext()"><span data-i18n="tour_next">Další</span> &rarr;</button>
+          </div>
+        </div>
+      </div>
     </div>
-    <button id="panel-reopen-btn" onclick="togglePanel()" style="display:none;" data-i18n-title="show_panel" title="Zobrazit panel" aria-label="Zobrazit panel">&lsaquo;</button>
   </div>
 </div>
 

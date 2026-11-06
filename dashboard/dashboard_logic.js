@@ -18,8 +18,41 @@ const LABELS = {
   G: { cz: "Travní porosty", en: "Grassland" },
   U: { cz: "Zastavěné území", en: "Urban Areas" },
   X: { cz: "Neklasifikováno", en: "Unclassified" },
-  I: { cz: "Ekosystémová integrita krajiny", en: "Ecosystem Integrity" },
+  // Short label for chart legends/tags; the full indicator name
+  // (T("health_index")) is stated once per card (brief G3).
+  I: { cz: "IEI", en: "IEI" },
 };
+
+// Diverging colours for CHANGE (brief G8 + colleagues' colour spec): red =
+// decrease, white = zero, blue = increase. Seven fixed stops, interpolated in
+// sRGB, with zero exactly in the middle. Position t = (v / M + 1) / 2, clamped
+// to 0-1, where M is the (symmetric) data range for that quantity.
+const CHG_STOPS = [
+  [0, "#B54836"], [1 / 6, "#CE8579"], [2 / 6, "#E6C2BC"], [0.5, "#FFFFFF"],
+  [4 / 6, "#BBCFE2"], [5 / 6, "#769EC5"], [1, "#326EA8"],
+];
+const CHG_GRADIENT_CSS = CHG_STOPS.map((st) => st[1] + " " + (st[0] * 100).toFixed(2) + "%").join(", ");
+const NO_DATA_COLOR = "#E2E7E4"; // separate from the scale: no data is not zero
+function changeRgb(t) {
+  t = Math.max(0, Math.min(1, t));
+  for (let i = 1; i < CHG_STOPS.length; i++) {
+    if (t <= CHG_STOPS[i][0]) {
+      const a = CHG_STOPS[i - 1], b = CHG_STOPS[i];
+      const k = (t - a[0]) / (b[0] - a[0]);
+      const ca = parseInt(a[1].slice(1), 16), cb = parseInt(b[1].slice(1), 16);
+      const ch = (sh) => Math.round(((ca >> sh) & 255) + ((((cb >> sh) & 255) - ((ca >> sh) & 255)) * k));
+      return [ch(16), ch(8), ch(0)];
+    }
+  }
+  return [0x32, 0x6E, 0xA8];
+}
+// The published trend tiles were baked with a 3-stop colormap (see
+// pipeline/08_rebuild_trend_tiles.ipynb): orange (229,137,84) at -0.01694,
+// white (253,253,253) at 0, dark green (0,68,27) at +0.01694 (about +/-2 SD of
+// the real slopes), with anything beyond clipped to the end colour. Colour
+// distance from white therefore maps linearly back to the slope, so the
+// recolour below is an exact inversion of that ramp, symmetric in both signs.
+const TREND_M = 0.01694; // slope per year, 0-1 index scale (= 1.7 p. b. / year)
 
 // Palette redesigned for contrast (colleague feedback: the old grays and
 // beiges were too close together). Distinct hue AND lightness per class.
@@ -77,92 +110,81 @@ function subcatColor(bucketKey, i, n) {
 
 const I18N = {
   cz: {
-    title: "Ekosystémová integrita krajiny — Multi-Year Dashboard",
-    mode_current: "Snímek roku",
-    mode_change: "Změna v čase",
+    title: "Portál zdraví krajiny – indikátory regionální ekosystémové integrity",
+    mode_current: "Roční přehled",
+    mode_change: "Změna v čase (2017–2025)",
     display_label: "Zobrazit:",
-    year_label: "Rok:",
+    year_label: "Rok",
     from_label: "Od:",
     to_label: "Do:",
-    raster_label: "Rastrová vrstva:",
+    raster_label: "Rastrové vrstvy",
     raster_none: "Žádná",
-    raster_health: "Ekosystémová integrita",
+    raster_health: "Index ekosystémové integrity (IEI)",
     raster_photo: "Fotosyntetický potenciál",
     raster_cooling: "Chladicí schopnost vegetace",
     raster_hetero: "Krajinná pestrost",
-    raster_trend: "Trend 2017–2025",
-    panel_placeholder: "Klikněte na ORP na mapě pro zobrazení detailu.",
+    raster_trend: "Změna v čase (2017–2025)",
+    panel_placeholder: "Klikněte na ORP (obec s rozšířenou působností) na mapě pro zobrazení detailu.",
     dominant_class: "Dominantní třída",
-    health_index: "Ekosystémová integrita krajiny",
+    health_index: "Index ekosystémové integrity (IEI)",
     orp_code: "Kód ORP",
     value_in_year: "Hodnota v roce",
     neighbor_median: "Medián sousedů",
     vs_neighbors: "Vs. sousedé",
+    pp_unit: "p. b.",
     above_by: "nad o",
     below_by: "pod o",
     yoy: "Meziroční změna",
     since: "od",
     na: "n/a",
-    compare_years_title: "Porovnání let",
-    compare_years_info: "Toto porovnání ovlivňuje pouze tento režim „Změna v čase“ (graf, žebříček, karty níže). Neovlivňuje rastrové vrstvy ani režim „Snímek roku“, které používají svůj vlastní výběr roku.",
-    composition_title: "Zastoupení kategorií",
-    composition_info: "Podíl plochy ORP, kterou zabírá každá ze čtyř kategorií (les, zemědělská půda, travní porosty, zastavěné území). Nezahrnuje neklasifikované plochy (vodní, mokřadní, skalní), proto součet nemusí činit přesně 100 %.",
-    history_title: "Vývoj v čase",
-    history_info_current: "Hodnota indexu (0–100 %) pro každou kategorii a pro celkovou ekosystémovou integritu v jednotlivých letech 2017–2025. Zvýrazněná kategorie (viz štítek nahoře) je vykreslena silněji a vyplněna; ostatní jsou zeslabené.",
-    history_info_change: "Hodnota vybraného indexu v jednotlivých letech 2017–2025 spolu s proloženým dlouhodobým trendem (přerušovaná čára). Karta výše ukazuje změnu jen mezi zvolenými roky Od/Do, tento graf ukazuje celý průběh.",
-    delta_card_info: "Rozdíl hodnoty indexu mezi zvoleným počátečním a koncovým rokem (výběr „Porovnání let“ výše), v procentních bodech škály 0–100 %.",
-    trend_title: "Dlouhodobý trend (2017–2025)",
+    compare_years_title: "Časový rozsah",
+    composition_title: "Třídy krajinného povrchu",
+    history_title: "{PARAM} 2017–2025 — {ORP}",
+    trend_title: "Lineární trend 2017–2025",
     trend_slope: "Sklon (za rok)",
     trend_significance: "Statistická významnost",
     significant: "významný",
     not_significant: "nevýznamný",
     trend_note: "OLS regrese + Theil-Sen (odolný vůči odlehlým hodnotám)",
-    leaderboard_title: "Nejvýraznější změny ({PERIOD})",
+    leaderboard_title: "ORP s největší změnou {PARAM} během {FROM}–{TO}",
     biggest_decline: "Největší pokles",
-    biggest_improvement: "Největší zlepšení",
-    ranking_title: "Nejlepší a nejhorší hodnoty (vybraný rok)",
+    biggest_improvement: "Největší nárůst",
+    ranking_title: "{PARAM} v roce {YEAR} – pořadí ORP",
     lowest_values: "Nejnižší hodnoty",
     highest_values: "Nejvyšší hodnoty",
-    change_note: "Hodnoty představují průměrný rozdíl indexu mezi vybranými roky. Červená = pokles, zelená = zlepšení.",
-    values_note: "Hodnoty představují průměrný ekosystémový index (0–1) pro danou kategorii v rámci ORP.",
+    change_note: "Rozdíl hodnot IEI mezi rokem {TO} a {FROM} v procentních bodech ({TO} − {FROM}). Červená = pokles, modrá = nárůst.",
+    values_note: "IEI za rok {YEAR} (0–100 %), průměr hodnot v ORP{FILTER}.",
     click_hint: "(klikněte pro detail)",
     no_data: "Chybí data",
     legend_dominant: "Dominantní třída",
-    legend_health: "Ekosystémová integrita (0–100 %)",
+    legend_health: "IEI (0–100 %)",
     legend_class: "vs. medián sousedů",
-    legend_change: "Změna (od–do)",
+    legend_change: "Změna {PARAM}, {FROM}–{TO}",
     below_neighbors: "Pod sousedy",
     near_neighbors: "Blízko sousedům",
     above_neighbors: "Nad sousedy",
     decline: "Pokles",
     no_change: "Beze změny",
-    improvement: "Zlepšení",
-    tooltip_index_info: "Ekosystémová integrita krajiny (RIEI) je plocho-vážený průměr indexu ekosystémové integrity napříč lesem, zemědělskou půdou, travními porosty a zastavěným územím v dané ORP.",
+    improvement: "Nárůst",
     share_of_area: "podíl plochy",
     raster_legend_low: "Nižší hodnoty",
     raster_legend_high: "Vyšší hodnoty",
-    contribution_title: "Podíl na ekosystémové integritě krajiny",
+    contribution_title: "Příspěvek tříd krajinného povrchu k IEI",
     untapped_potential: "Nevyužitý potenciál",
-    subcategory_title: "Skladba kategorie: {LABEL}",
+    subcategory_title: "Složení třídy krajinného povrchu: {LABEL}",
     subcategory_other: "Ostatní",
-    subcategory_info: "Jemnější rozdělení podle typu porostu/využití v rámci této kategorie (např. u lesa: přírodní vs. nepřírodní, smrčiny, bučiny...). Zobrazeno je 6 nejvýznamnějších tříd, zbytek je sloučen do „Ostatní“.",
-    legend_health_info: "Barevná škála odpovídá reálnému rozsahu hodnot naměřených mezi ORP v Česku, nikoli celému teoretickému rozsahu 0–100 %. Žádná ORP nedosahuje ani jedné z krajních hodnot.",
-    leaderboard_info: "Řazení podle nejnižších/nejvyšších naměřených hodnot ve vybraném období -- nejedná se o hodnotící žebříček.",
-    legend_dominant_info: "Kategorie zabírající největší podíl plochy dané ORP (les, zemědělská půda, travní porosty nebo zastavěné území).",
     legend_class_info: "Porovnání s mediánem přímo sousedících ORP; sytost barvy odpovídá velikosti odchylky od tohoto mediánu.",
-    trend_info: "„Významný“ znamená p < 0,05 (95% jistota, že trend není náhodný). R² udává, jak dobře přímka odpovídá 9 ročním hodnotám (2017–2025).",
-    contribution_info: "Vážený příspěvek = index ekosystémové integrity dané kategorie × její podíl na ploše ORP. Součet odpovídá celkové ekosystémové integritě výše; zbytek do 100 % je „nevyužitý potenciál“.",
     back_to_national: "Zpět na Českou republiku",
     transparency_label: "Průhlednost",
     region_median: "Krajský medián",
-    vs_region: "Vs. kraj",
-    national_sub: "Celostátní přehled — 206 ORP",
+    vs_region: "vůči krajskému mediánu",
+    national_sub: "Celostátní přehled",
     region_too_small: "V tomto kraji není dostatek dalších ORP pro srovnání.",
     trend_summary: "Za posledních 9 let (2017–2025): {LABEL} — změna o",
     trend_summary_suffix: "ročně.",
     trend_summary_national: "Za posledních 9 let (2017–2025) se celostátní ekosystémová integrita měnila o",
     comparison_desc: "Srovnání níže vychází z mediánu ostatních ORP ve stejném kraji",
-    index_in_year: "{LABEL} v roce",
+    index_in_year: "IEI v roce",
     viewing_label: "Zobrazeno:",
     area_of: "Plocha:",
     total_area_label: "Celková plocha ORP",
@@ -170,7 +192,7 @@ const I18N = {
     tour_button: "Prohlídka rastrů",
     tour_prev: "Předchozí",
     tour_next: "Další",
-    tour_1_title: "Ukazatel: Index krajinného zdraví",
+    tour_1_title: "Ukazatel: Index ekosystémové integrity (IEI)",
     tour_1_desc: "Kompozitní ukazatel celkového zdraví vegetace, její produktivity, schopnosti čerpat vodu z půdy a chladit a její pestrosti. Vytvořili jsme ho vypočtením průměrné hodnoty z tří dále uvedených ukazatelů. V mapě červené hodnoty představují místa s nízkými hodnotami a modré místa s vysokými.",
     tour_2_title: "Ukazatel: Fotosyntetický potenciál",
     tour_2_desc: "Schopnost rostlin zachytávat sluneční záření během fotosyntézy. Je přímo úměrné množství potravin, krmiv, sena a dřeva, které na daném místě v průběhu roku vyroste. V mapě zelená barva představuje vysokou hodnotu fotosyntetického potenciálu a červená hodnotu nízkou.",
@@ -192,18 +214,18 @@ const I18N = {
     tour_10_desc: "Krajina Třeboňska je příkladem symbiózy přírody s člověkem. Původně bažinatá krajina byla člověkem během středověku přeměněna v produktivní a druhově pestrou rybniční krajinu. Lesy, mokřady, vesničky a rybníčky tvoří malebnou a pestrou mozaiku různorodých ekosystémů, které tvoří jedinečný charakter Třeboňska.",
     tour_11_title: "Příklad: Umírající les",
     tour_11_desc: "Těžko tomu věřit, ale národní park Česko Švýcarsko je téměř zcela pokryt smrkovými monokulturami. Správně by tu měly růst listnaté stromy, nepůvodním smrkům se zde již nedaří. Patří k místům nejvíce zasaženým kůrovcem v republice. Lesy NP jsou ve srovnání s okolními prokvetlé souškami a jako celek rostou jen velmi málo, což je patrné z měření ročního fotosyntetického potenciálu.",
-    tour_trend_title: "Ukazatel: Dlouhodobý trend (2017–2025)",
-    tour_trend_desc: "Namísto stavu v jediném roce ukazuje tato vrstva směr vývoje: pro každý pixel spočítáme sklon přímky proložené devíti ročními hodnotami ekosystémové integrity (2017–2025) a zobrazíme ho jako jedno číslo -- kladné (zelené), pokud se stav dlouhodobě zlepšuje, záporné (oranžové), pokud se zhoršuje. Je to stejná metoda (OLS regrese), jakou dashboard používá pro trend jednotlivých ORP v postranním panelu, jen aplikovaná pixel po pixelu napříč celou republikou.",
+    tour_trend_title: "Ukazatel: Změna v čase (2017–2025)",
+    tour_trend_desc: "Namísto stavu v jediném roce ukazuje tato vrstva směr vývoje: pro každý pixel spočítáme sklon přímky proložené devíti ročními hodnotami Indexu ekosystémové integrity (2017–2025) a zobrazíme ho jako jedno číslo -- kladné (modré), pokud se stav dlouhodobě zlepšuje, záporné (červené), pokud se zhoršuje. Je to stejná metoda (OLS regrese), jakou dashboard používá pro trend jednotlivých ORP v postranním panelu, jen aplikovaná pixel po pixelu napříč celou republikou.",
     tour_decline1_title: "Příklad: Odumírající smrčiny na Šumavě a v Krušných horách",
     tour_decline1_desc: "Šumavské a krušnohorské pohraniční ORP (Vimperk, Prachatice, Sušice, Kaplice, Český Krumlov, Kraslice) patří k oblastem s vůbec nejstrmějším měřeným poklesem ekosystémové integrity v celém datasetu 2017–2025. Roli zde hraje kombinace sucha a kůrovcové kalamity, která postupně mění hospodářské smrkové porosty na uschlé nebo právě vytěžené plochy -- ubývá fotosyntetického potenciálu i chladicí schopnosti vegetace.",
     tour_decline2_title: "Příklad: Sokolovská hnědouhelná pánev",
     tour_decline2_desc: "Karlovarský kraj (Sokolov, Karlovy Vary, Cheb, Aš, Stříbro, Tachov) tvoří druhé, zcela odlišné ohnisko poklesu: namísto přírodní kalamity zde dlouhodobě působí těžba a úprava hnědého uhlí, rekultivace výsypek a rozšiřování zástavby. Zotavení vegetace po těžbě je pomalé, takže i zde patří naměřené hodnoty k nejstrměji klesajícím v republice.",
     hide_panel: "Skrýt panel",
     show_panel: "Zobrazit panel",
-    about_button: "O projektu",
-    intro_eyebrow: "Ekosystémová integrita krajiny",
-    intro_title: "O tomto nástroji",
-    intro_body1: "Dashboard zobrazuje Ekosystémovou integritu krajiny (RIEI) pro každou obec s rozšířenou působností v České republice, každoročně od roku 2017 do 2025. Index vychází ze tří nezávislých družicových ukazatelů -- fotosyntetického potenciálu, chladicí schopnosti vegetace a krajinné pestrosti -- které se kombinují do jedné souhrnné hodnoty.",
+    about_button: "O datech",
+    intro_eyebrow: "Index ekosystémové integrity (IEI)",
+    intro_title: "O datech",
+    intro_body1: "Dashboard zobrazuje Index ekosystémové integrity (IEI) pro každou obec s rozšířenou působností (ORP) v České republice, každoročně od roku 2017 do 2025. Index vychází ze tří nezávislých družicových ukazatelů -- fotosyntetického potenciálu, chladicí schopnosti vegetace a krajinné pestrosti -- které se kombinují do jedné souhrnné hodnoty.",
     intro_body2: "Nástroj je určený zemědělcům, lesníkům, poradcům, samosprávám i ochraně přírody jako podklad pro sledování stavu krajiny v čase a rozhodování o jejím lepším hospodaření.",
     intro_continue: "Pokračovat na dashboard",
     intro_reference: "Metodika: Zelený, J., Mercado-Bettín, D., & Müller, F. (2021). Towards the evaluation of regional ecosystem integrity using NDVI, brightness temperature and surface heterogeneity. Science of the Total Environment, 796, Article 148994.",
@@ -215,97 +237,155 @@ const I18N = {
     contact_name: "Jakub Zelený",
     contact_role: "vedení metodiky",
     contact_close: "Zavřít",
-    search_placeholder: "Hledat ORP…",
+    search_placeholder: "Hledej ORP nebo kraj",
     search_no_results: "Nic nenalezeno",
     raster_clear_title: "Vypnout rastr",
+    pp_unit_long: "p. b.",
+    smallest_decrease: "Nejmenší pokles",
+    smallest_increase: "Nejmenší nárůst",
+    values_filter: " pro vybraný parametr a typ krajinného povrchu",
+    cmp_above: "O {X} vyšší ve srovnání s krajským mediánem",
+    cmp_below: "O {X} nižší ve srovnání s krajským mediánem",
+    cmp_same: "Shodně s krajským mediánem",
+    national_median: "Medián ČR",
+    change_title: "Změna Indexu ekosystémové integrity mezi roky {FROM}–{TO}",
+    change_title_param: "Změna IEI ({LABEL}) mezi roky {FROM}–{TO}",
+    significance_note: "Statistická významnost sklonu závisí na použitém testu; podrobnosti jsou v informaci „i“.",
+    help_button: "Nápověda",
+    info_label: "Informace",
+    info_what: "Co to je",
+    info_how: "Jak to číst",
+    info_source: "Zdroj a období",
+    info_expert: "Pro odborníky",
+    info_source_base: "Člověk v tísni; družicová data zpracovaná podle metodiky Zelený et al. (2021).",
+    title_main: "Portál zdraví krajiny",
+    title_sub: "indikátory regionální ekosystémové integrity",
+    nav_map: "Mapa",
+    nav_about: "O datech",
+    nav_method: "Metodika",
+    nav_data: "Data ke stažení",
+    display_mode_label: "Režim zobrazení",
+    parameter_label: "Parametr",
+    reset_button: "Obnovit",
+    apply_button: "Zobrazit",
+    orp_word: "ORP",
+    row_total_change: "Celková změna",
+    row_vs_region: "Oproti krajskému mediánu",
+    row_rank_change: "Pořadí podle změny",
+    row_rank_level: "Pořadí podle hodnoty",
+    rank_in_region: "{R}. z {N} v kraji",
+    rank_in_country: "{R}. z {N}",
+    section_change_title: "Změna {FROM}–{TO}",
+    section_level_title: "{PARAM} v roce {YEAR}",
+    chart_trend_title: "Lineární trend 2017–2025",
+    chart_history_title: "Vývoj v čase 2017–2025",
+    collapse_label: "Sbalit / rozbalit",
+    method_eyebrow: "Metodika",
+    method_title: "Jak se Index ekosystémové integrity počítá",
+    method_h1: "Tři družicové ukazatele",
+    method_p1: "Index ekosystémové integrity (IEI) kombinuje fotosyntetický potenciál, chladicí schopnost vegetace a krajinnou pestrost do jedné hodnoty na škále 0–100 %. Vyšší hodnota znamená vyšší ekosystémovou integritu. Metodika vychází z práce Zelený et al. (2021).",
+    method_h2: "Od pixelů k ORP",
+    method_p2: "Hodnoty ukazatelů se pro každý rok 2017–2025 zprůměrují v rámci čtyř tříd krajinného povrchu (les, zemědělská půda, travní porosty, zastavěné území). Celkové IEI obce s rozšířenou působností (ORP) je plošně vážený průměr těchto čtyř tříd. Neklasifikované plochy (voda, mokřady, holé skály) se do indexu nezapočítávají.",
+    method_h3: "Změna a trend",
+    method_p3: "Změna IEI je rozdíl IEI v koncovém a počátečním roce, vyjádřený v procentních bodech (p. b.). Lineární trend je sklon přímky proložené metodou nejmenších čtverců (OLS) devíti ročními hodnotami 2017–2025, v p. b. za rok. Popis statistického testu významnosti trendu bude doplněn.",
+    method_h4: "Jak číst barvy",
+    method_p4: "Mapa změny používá jednu škálu pro všechny změny: červená = pokles, bílá = beze změny, modrá = nárůst, symetricky kolem nuly. Mapa roční úrovně IEI má vlastní škálu odpovídající reálnému rozsahu hodnot v České republice a se škálou změny se nezaměňuje.",
+    method_h5: "Zdroje",
+    data_eyebrow: "Data ke stažení",
+    data_title: "Stáhněte si data z portálu",
+    data_intro: "Hodnoty, které portál zobrazuje, ve formátu CSV. Nic se nepřepočítává, soubory vznikají přímo ve vašem prohlížeči z dat zobrazených v portálu.",
+    dl_levels_title: "Hodnoty IEI podle ORP a roku",
+    dl_levels_desc: "Celkové IEI a čtyři třídy krajinného povrchu, 2017–2025, v % (škála 0–100).",
+    dl_change_title: "Změna IEI podle ORP",
+    dl_change_desc: "Rozdíl v procentních bodech (koncový rok − počáteční rok), nyní {FROM}–{TO}.",
+    dl_trend_title: "Lineární trend podle ORP",
+    dl_trend_desc: "Sklon lineárního trendu 2017–2025 v procentních bodech za rok.",
+    dl_button: "Stáhnout CSV",
+    data_note: "Soubory jsou v kódování UTF-8, oddělovač je čárka, desetinná tečka.",
+    row_value: "Hodnota",
+    per_year: "/rok",
+    row_slope: "Roční sklon trendu",
+    row_signif: "Statistická významnost",
+    signif_yes: "významný (p = {P})",
+    signif_no: "nevýznamný (p = {P})",
+    slope_note: "Roční sklon není celková změna za období.",
   },
   en: {
-    title: "Landscape Ecosystem Integrity — Multi-Year Dashboard",
-    mode_current: "Year Snapshot",
-    mode_change: "Change over Time",
+    title: "Landscape Health Portal – Regional Ecosystem Integrity Indicators",
+    mode_current: "Annual overview",
+    mode_change: "Change over time (2017–2025)",
     display_label: "Display:",
-    year_label: "Year:",
+    year_label: "Year",
     from_label: "From:",
     to_label: "To:",
-    raster_label: "Raster layer:",
+    raster_label: "Raster layers",
     raster_none: "None",
-    raster_health: "Ecosystem Integrity",
+    raster_health: "Index of Ecosystem Integrity (IEI)",
     raster_photo: "Photosynthetic potential",
     raster_cooling: "Vegetation cooling capacity",
     raster_hetero: "Landscape heterogeneity",
-    raster_trend: "Trend 2017–2025",
-    panel_placeholder: "Click a municipality (ORP) on the map to see its detail.",
+    raster_trend: "Change over time (2017–2025)",
+    panel_placeholder: "Click an ORP (municipality with extended powers) on the map to see its detail.",
     dominant_class: "Dominant class",
-    health_index: "Ecosystem Integrity",
+    health_index: "Index of Ecosystem Integrity (IEI)",
     orp_code: "ORP code",
     value_in_year: "Value in",
     neighbor_median: "Neighbor median",
     vs_neighbors: "Vs. neighbors",
+    pp_unit: "p.p.",
     above_by: "above by",
     below_by: "below by",
     yoy: "Year-over-year",
     since: "since",
     na: "n/a",
-    compare_years_title: "Compare years",
-    compare_years_info: "This comparison only affects this Change over Time view (the chart, leaderboard, and cards below). It doesn't affect the raster layers or the Year Snapshot mode, which use their own year selection.",
-    composition_title: "Land-use composition",
-    composition_info: "The share of the ORP's area covered by each of the four categories (Forest, Agricultural Land, Grassland, Urban Areas). Unclassified land (water, wetland, bare rock) isn't included, so the segments may not add up to exactly 100%.",
-    history_title: "Values over time",
-    history_info_current: "The index value (0-100%) for each category and for overall Ecosystem Integrity, year by year from 2017-2025. The featured category (see the tag above) is drawn bolder and filled in; the others are dimmed.",
-    history_info_change: "The selected index's value year by year from 2017-2025, with the fitted long-term trend overlaid (dashed line). The card above shows the change between just the chosen From/To years; this chart shows the full path.",
-    delta_card_info: "The difference in index value between the selected start and end year (the \"Compare years\" control above), in percentage points on the 0-100% scale.",
-    trend_title: "Long-term trend (2017–2025)",
+    compare_years_title: "Temporal range",
+    composition_title: "Land cover classes",
+    history_title: "{PARAM} 2017–2025 — {ORP}",
+    trend_title: "Linear trend 2017–2025",
     trend_slope: "Slope (per year)",
     trend_significance: "Statistical significance",
     significant: "significant",
     not_significant: "not significant",
     trend_note: "OLS regression + Theil-Sen (robust to outliers)",
-    leaderboard_title: "Most notable changes ({PERIOD})",
-    biggest_decline: "Biggest decline",
-    biggest_improvement: "Biggest improvement",
-    ranking_title: "Best and worst values (selected year)",
+    leaderboard_title: "ORPs with the largest change in {PARAM} between {FROM} and {TO}",
+    biggest_decline: "Largest decrease",
+    biggest_improvement: "Largest increase",
+    ranking_title: "{PARAM} in {YEAR} – ranking of ORPs",
     lowest_values: "Lowest values",
     highest_values: "Highest values",
-    change_note: "Values represent the average index difference between the selected years. Red = decline, green = improvement.",
-    values_note: "Values represent the average ecosystem index (0-1) for the category within the ORP.",
+    change_note: "Difference in IEI between {TO} and {FROM} in percentage points ({TO} − {FROM}). Red = decrease, blue = increase.",
+    values_note: "IEI in {YEAR} (0–100%), mean value per ORP{FILTER}.",
     click_hint: "(click for detail)",
     no_data: "Missing data",
     legend_dominant: "Dominant class",
-    legend_health: "Ecosystem Integrity (0-100%)",
+    legend_health: "IEI (0–100%)",
     legend_class: "vs. neighbor median",
-    legend_change: "Change (from-to)",
+    legend_change: "Change in {PARAM}, {FROM}–{TO}",
     below_neighbors: "Below neighbors",
     near_neighbors: "Near neighbors",
     above_neighbors: "Above neighbors",
-    decline: "Decline",
+    decline: "Decrease",
     no_change: "No change",
-    improvement: "Improvement",
-    tooltip_index_info: "Ecosystem Integrity (RIEI) is an area-weighted average of the ecosystem integrity index across forest, agricultural land, grassland, and urban area within the ORP.",
+    improvement: "Increase",
     share_of_area: "share of area",
     raster_legend_low: "Lower values",
     raster_legend_high: "Higher values",
-    contribution_title: "Contribution to Ecosystem Integrity",
-    untapped_potential: "Untapped potential",
-    subcategory_title: "What makes up {LABEL}",
+    contribution_title: "Contribution of land cover classes to IEI",
+    untapped_potential: "Unused potential",
+    subcategory_title: "Composition of land cover class: {LABEL}",
     subcategory_other: "Other",
-    subcategory_info: "A finer breakdown of the stand/land-cover types within this category (for Forest, for example: natural vs. non-natural, spruce, beech...). Shows the 6 largest classes; the rest are grouped into \"Other.\"",
-    legend_health_info: "The color scale reflects the real range of values observed across Czech ORPs, not the full theoretical 0-100% scale -- no ORP reaches either extreme.",
-    leaderboard_info: "Ranked by the lowest/highest measured values for the selected period -- not a performance ranking.",
-    legend_dominant_info: "The land-cover category covering the largest share of this ORP's area (forest, agricultural land, grassland, or urban).",
     legend_class_info: "Compared to the median of directly bordering ORPs; color intensity reflects the size of the difference from that median.",
-    trend_info: "\"Significant\" means p < 0.05 (95% confidence the trend isn't due to chance). R² shows how well a straight line fits the 9 yearly values (2017-2025).",
-    contribution_info: "Weighted contribution = each category's ecosystem integrity index × its share of ORP area. The segments sum to the overall Ecosystem Integrity shown above; the remainder to 100% is \"untapped potential.\"",
     back_to_national: "Back to Czech Republic",
     transparency_label: "Transparency",
     region_median: "Regional median",
-    vs_region: "Vs. region",
-    national_sub: "National overview -- 206 ORPs",
+    vs_region: "vs. regional median",
+    national_sub: "National overview",
     region_too_small: "Not enough other ORPs in this region for a ranking.",
     trend_summary: "Over the last 9 years (2017–2025), {LABEL} has changed by",
     trend_summary_suffix: "per year.",
     trend_summary_national: "Over the last 9 years (2017–2025), national Ecosystem Integrity has changed by",
     comparison_desc: "The comparison below is based on the median of other ORPs within the same kraj",
-    index_in_year: "{LABEL} in",
+    index_in_year: "IEI in",
     viewing_label: "Viewing:",
     area_of: "Area:",
     total_area_label: "Total ORP area",
@@ -313,7 +393,7 @@ const I18N = {
     tour_button: "Raster tour",
     tour_prev: "Previous",
     tour_next: "Next",
-    tour_1_title: "Indicator: Ecosystem Integrity Index",
+    tour_1_title: "Indicator: Index of Ecosystem Integrity (IEI)",
     tour_1_desc: "A composite indicator of vegetation's overall health, its productivity, its ability to draw water from the soil and cool its surroundings, and its diversity. We created it by averaging the three indicators listed below. On the map, red values represent low scores and blue values represent high scores.",
     tour_2_title: "Indicator: Photosynthetic Potential",
     tour_2_desc: "Plants' ability to capture solar radiation during photosynthesis. It is directly proportional to the amount of food, feed, hay, and wood that grows in a given place over the year. On the map, green represents high photosynthetic potential and red represents low.",
@@ -335,18 +415,18 @@ const I18N = {
     tour_10_desc: "The Třeboň region is an example of a symbiosis between nature and people. Originally a marshy landscape, it was transformed by humans during the Middle Ages into a productive, species-rich fishpond landscape. Forests, wetlands, villages, and ponds form a picturesque, diverse mosaic of ecosystems that gives the Třeboň region its unique character.",
     tour_11_title: "Example: A Dying Forest",
     tour_11_desc: "Hard as it is to believe, Bohemian Switzerland National Park is almost entirely covered by spruce monocultures. Deciduous trees should rightfully grow here -- the non-native spruce no longer thrives. It is among the areas most affected by bark beetle in the country. Compared to surrounding areas, the park's forests are riddled with dead standing trees and, as a whole, show very little growth, which is evident in annual photosynthetic potential measurements.",
-    tour_trend_title: "Indicator: Long-Term Trend (2017–2025)",
-    tour_trend_desc: "Instead of a single year's snapshot, this layer shows the direction of change: for every pixel we fit a line through nine years of Ecosystem Integrity values (2017–2025) and reduce it to one number -- positive (green) where conditions have been improving over time, negative (orange) where they've been declining. It's the same method (OLS regression) the dashboard already uses for each ORP's own trend in the side panel, just applied pixel by pixel across the whole country.",
+    tour_trend_title: "Indicator: Change over time (2017–2025)",
+    tour_trend_desc: "Instead of a single year's snapshot, this layer shows the direction of change: for every pixel we fit a line through nine years of Index of Ecosystem Integrity values (2017–2025) and reduce it to one number -- positive (blue) where conditions have been improving over time, negative (red) where they've been declining. It's the same method (OLS regression) the dashboard already uses for each ORP's own trend in the side panel, just applied pixel by pixel across the whole country.",
     tour_decline1_title: "Example: Dying Spruce Stands in Šumava and the Krušné Hory",
     tour_decline1_desc: "The Šumava and Krušné hory border ORPs (Vimperk, Prachatice, Sušice, Kaplice, Český Krumlov, Kraslice) are among the areas with the steepest measured Ecosystem Integrity decline in the entire 2017–2025 dataset. A combination of drought and bark-beetle outbreaks is gradually turning managed spruce stands into dead or freshly logged clearings -- both photosynthetic potential and vegetation cooling capacity are dropping as a result.",
     tour_decline2_title: "Example: The Sokolov Brown-Coal Basin",
     tour_decline2_desc: "Karlovy Vary Region (Sokolov, Karlovy Vary, Cheb, Aš, Stříbro, Tachov) is a second, very different pocket of decline: instead of a natural calamity, this one is driven by long-running lignite mining and processing, slow spoil-heap reclamation, and expanding built-up land. Vegetation recovery after mining is slow, so measured values here are also among the steepest-declining in the country.",
     hide_panel: "Hide panel",
     show_panel: "Show panel",
-    about_button: "About",
-    intro_eyebrow: "Landscape Ecosystem Integrity",
-    intro_title: "About this tool",
-    intro_body1: "This dashboard shows Landscape Ecosystem Integrity (RIEI) for every municipality with extended powers (ORP) in the Czech Republic, year by year from 2017 to 2025. The index is built from three independent satellite-derived indicators -- photosynthetic potential, vegetation cooling capacity, and landscape heterogeneity -- combined into a single composite value.",
+    about_button: "About data",
+    intro_eyebrow: "Index of Ecosystem Integrity (IEI)",
+    intro_title: "About data",
+    intro_body1: "This dashboard shows the Index of Ecosystem Integrity (IEI) for every municipality with extended powers (ORP) in the Czech Republic, year by year from 2017 to 2025. The index is built from three independent satellite-derived indicators -- photosynthetic potential, vegetation cooling capacity, and landscape heterogeneity -- combined into a single composite value.",
     intro_body2: "It's intended for farmers, foresters, agricultural advisors, local government, and conservation groups as a way to track landscape condition over time and inform better land management.",
     intro_continue: "Continue to dashboard",
     intro_reference: "Methodology: Zelený, J., Mercado-Bettín, D., & Müller, F. (2021). Towards the evaluation of regional ecosystem integrity using NDVI, brightness temperature and surface heterogeneity. Science of the Total Environment, 796, Article 148994.",
@@ -358,9 +438,78 @@ const I18N = {
     contact_name: "Jakub Zelený",
     contact_role: "methodology lead",
     contact_close: "Close",
-    search_placeholder: "Search ORP…",
+    search_placeholder: "Search ORP or region",
     search_no_results: "No matches",
     raster_clear_title: "Turn off raster",
+    pp_unit_long: "percentage points",
+    smallest_decrease: "Smallest decrease",
+    smallest_increase: "Smallest increase",
+    values_filter: " for the selected parameter and land cover type",
+    cmp_above: "{X} above the regional median",
+    cmp_below: "{X} below the regional median",
+    cmp_same: "Same as the regional median",
+    national_median: "National median",
+    change_title: "Change in the Index of Ecosystem Integrity between {FROM} and {TO}",
+    change_title_param: "Change in IEI ({LABEL}) between {FROM} and {TO}",
+    significance_note: "The statistical significance of the slope depends on the test used; see the “i” information for details.",
+    help_button: "Help",
+    info_label: "Information",
+    info_what: "What it is",
+    info_how: "How to read it",
+    info_source: "Data source and period",
+    info_expert: "For experts",
+    info_source_base: "People in Need; satellite data processed following Zelený et al. (2021).",
+    title_main: "Landscape Health Portal",
+    title_sub: "Regional Ecosystem Integrity Indicators",
+    nav_map: "Map",
+    nav_about: "About data",
+    nav_method: "Methodology",
+    nav_data: "Data downloads",
+    display_mode_label: "View mode",
+    parameter_label: "Parameter",
+    reset_button: "Reset",
+    apply_button: "Show",
+    orp_word: "ORP",
+    row_total_change: "Total change",
+    row_vs_region: "Versus the regional median",
+    row_rank_change: "Rank by change",
+    row_rank_level: "Rank by value",
+    rank_in_region: "{R} of {N} in region",
+    rank_in_country: "{R} of {N}",
+    section_change_title: "Change {FROM}–{TO}",
+    section_level_title: "{PARAM} in {YEAR}",
+    chart_trend_title: "Linear trend 2017–2025",
+    chart_history_title: "Values over time 2017–2025",
+    collapse_label: "Collapse / expand",
+    method_eyebrow: "Methodology",
+    method_title: "How the Index of Ecosystem Integrity is calculated",
+    method_h1: "Three satellite-derived indicators",
+    method_p1: "The Index of Ecosystem Integrity (IEI) combines photosynthetic potential, vegetation cooling capacity and landscape heterogeneity into a single value on a 0–100% scale. A higher value means higher ecosystem integrity. The method follows Zelený et al. (2021).",
+    method_h2: "From pixels to ORPs",
+    method_p2: "For each year 2017–2025, indicator values are averaged within four land cover classes (forest, agricultural land, grassland, urban areas). The overall IEI of a municipality with extended powers (ORP) is the area-weighted average of these four classes. Unclassified land (water, wetland, bare rock) is not counted in the index.",
+    method_h3: "Change and trend",
+    method_p3: "The change in IEI is the IEI in the end year minus the IEI in the start year, expressed in percentage points (p.p.). The linear trend is the slope of an ordinary least squares (OLS) line through the nine yearly values 2017–2025, in p.p. per year. A description of the statistical significance test will be added.",
+    method_h4: "How to read the colours",
+    method_p4: "The change map uses one scale for all change: red = decrease, white = no change, blue = increase, symmetric around zero. The annual IEI map has its own scale matching the real range of values in Czechia and must not be confused with the change scale.",
+    method_h5: "Sources",
+    data_eyebrow: "Data downloads",
+    data_title: "Download the portal's data",
+    data_intro: "The values shown in the portal, as CSV files. Nothing is recalculated: the files are built in your browser from the data displayed in the portal.",
+    dl_levels_title: "IEI values by ORP and year",
+    dl_levels_desc: "Overall IEI and the four land cover classes, 2017–2025, in % (0–100 scale).",
+    dl_change_title: "Change in IEI by ORP",
+    dl_change_desc: "Difference in percentage points (end year − start year), currently {FROM}–{TO}.",
+    dl_trend_title: "Linear trend by ORP",
+    dl_trend_desc: "Slope of the linear trend 2017–2025 in percentage points per year.",
+    dl_button: "Download CSV",
+    data_note: "Files are UTF-8 encoded, comma-separated, with a decimal point.",
+    row_value: "Value",
+    per_year: "/yr",
+    row_slope: "Annual trend slope",
+    row_signif: "Statistical significance",
+    signif_yes: "significant (p = {P})",
+    signif_no: "not significant (p = {P})",
+    slope_note: "The annual slope is not the total change over the period.",
   },
 };
 
@@ -406,8 +555,12 @@ const RASTER_LEGENDS = {
     // zero still landing at 57.14% (its true position within the labeled
     // -0.072/+0.054 range), but with a much wider, gradual blend instead
     // of sharp bands -- purely cosmetic on the legend swatch.
-    stopsCss: "#e58954 0%, #eca987 20%, #f0c9ac 38%, #f7e3d3 48%, #ffffff 57.14%, #dcebe0 66%, #8fc29e 78%, #3d8259 90%, #00441b 100%",
-    lowText: "−0.072", highText: "+0.054",
+    // Change-over-time legend (brief C5/C6): continuous red-white-blue,
+    // zero still at 57.14% of the ramp; no numeric range, only the
+    // end labels "Decrease" / "Increase".
+    stopsCss: CHG_GRADIENT_CSS,
+    lowKey: "decline", midText: "0", highKey: "improvement", mValue: TREND_M,
+    infoKey: "change_map",
   },
 };
 
@@ -415,8 +568,143 @@ let lang = "cz";
 function T(key) { return (I18N[lang] && I18N[lang][key]) || key; }
 function label(key) { return LABELS[key] ? LABELS[key][lang] : key; }
 
+// ---------------------------------------------------------------------
+// Information popovers (brief G4). One lowercase "i" in a circle
+// everywhere; opens on click/tap or keyboard (Enter/Space), never on hover
+// alone. Every popover has the same structure: what it is / how to read it /
+// data source and period / for experts (collapsible, only where the method
+// is documented -- nothing here is invented).
+// ---------------------------------------------------------------------
+const INFO = {
+  iei: {
+    what: { cz: "Index ekosystémové integrity (IEI) je plošně vážený průměr hodnot za les, zemědělskou půdu, travní porosty a zastavěné území v dané ORP.", en: "The Index of Ecosystem Integrity (IEI) is an area-weighted average over forest, agricultural land, grassland and urban areas within the ORP." },
+    how: { cz: "Vyšší hodnoty znamenají vyšší ekosystémovou integritu (škála 0–100 %).", en: "Higher values mean higher ecosystem integrity (0–100% scale)." },
+    period: { cz: "Vybraný rok (2017–2025).", en: "The selected year (2017–2025)." },
+    expert: { cz: "IEI kombinuje tři družicové ukazatele: fotosyntetický potenciál, chladicí schopnost vegetace a krajinnou pestrost (Zelený et al., 2021).", en: "The IEI combines three satellite-derived indicators: photosynthetic potential, vegetation cooling capacity and landscape heterogeneity (Zelený et al., 2021)." },
+  },
+  health_legend: {
+    what: { cz: "Barevná škála IEI na mapě ORP.", en: "The colour scale of the IEI on the ORP map." },
+    how: { cz: "Škála odpovídá reálnému rozsahu hodnot napříč ORP v Česku, nikoli celému teoretickému rozsahu 0–100 %; žádná ORP nedosahuje krajních hodnot. Červená = nižší, zelená = vyšší integrita.", en: "The scale reflects the real range of values across Czech ORPs, not the full theoretical 0–100% range; no ORP reaches either extreme. Red = lower, green = higher integrity." },
+    period: { cz: "Vybraný rok (2017–2025).", en: "The selected year (2017–2025)." },
+  },
+  dominant: {
+    what: { cz: "Třída krajinného povrchu zabírající největší podíl plochy dané ORP.", en: "The land cover class covering the largest share of the ORP's area." },
+    how: { cz: "Barva odpovídá třídě (les, zemědělská půda, travní porosty, zastavěné území).", en: "The colour corresponds to the class (forest, agricultural land, grassland, urban areas)." },
+    period: { cz: "Vybraný rok (2017–2025).", en: "The selected year (2017–2025)." },
+  },
+  composition: {
+    what: { cz: "Podíl plochy ORP zabraný jednotlivými třídami krajinného povrchu (les, zemědělská půda, travní porosty, zastavěné území).", en: "The share of the ORP's area covered by each land cover class (forest, agricultural land, grassland, urban areas)." },
+    how: { cz: "Neklasifikované plochy (vodní, mokřadní, skalní) nejsou zahrnuty, proto součet nemusí činit přesně 100 %.", en: "Unclassified land (water, wetland, bare rock) is not included, so the segments may not add up to exactly 100%." },
+    period: { cz: "Vybraný rok (2017–2025).", en: "The selected year (2017–2025)." },
+  },
+  contribution: {
+    what: { cz: "Příspěvek každé třídy krajinného povrchu k IEI dané ORP.", en: "The contribution of each land cover class to the ORP's IEI." },
+    how: { cz: "Součet příspěvků odpovídá IEI uvedenému výše; zbytek do 100 % je „nevyužitý potenciál“ (šrafovaná část).", en: "The segments sum to the IEI shown above; the remainder up to 100% is “unused potential” (hatched segment)." },
+    period: { cz: "Vybraný rok (2017–2025).", en: "The selected year (2017–2025)." },
+    expert: { cz: "Vážený příspěvek = IEI dané třídy × její podíl na ploše ORP.", en: "Weighted contribution = the class's IEI × its share of the ORP area." },
+  },
+  subcategory: {
+    what: { cz: "Jemnější rozdělení vybrané třídy krajinného povrchu podle typu porostu nebo využití (např. u lesa přírodní vs. nepřírodní, smrčiny, bučiny).", en: "A finer breakdown of the selected land cover class by stand or land-use type (for forest, e.g. natural vs. non-natural, spruce, beech)." },
+    how: { cz: "Zobrazeno je 6 nejvýznamnějších tříd, zbytek je sloučen do „Ostatní“.", en: "The 6 largest types are shown; the rest are grouped as “Other”." },
+    period: { cz: "Klasifikace krajinného povrchu; neliší se podle roku.", en: "Land cover classification; it does not vary by year." },
+  },
+  history_current: {
+    what: { cz: "Vývoj IEI v čase pro každou třídu krajinného povrchu a pro celé ORP.", en: "The IEI over time for each land cover class and for the whole ORP." },
+    how: { cz: "Zvýrazněná třída je vykreslena silněji a vyplněna, ostatní jsou zeslabené. Přerušovaná čára je celkové IEI.", en: "The featured class is drawn bolder and filled in; the others are dimmed. The dashed line is the overall IEI." },
+    period: { cz: "2017–2025, hodnoty po rocích.", en: "2017–2025, yearly values." },
+  },
+  history_change: {
+    what: { cz: "Vývoj vybrané hodnoty IEI po rocích spolu s lineárním trendem.", en: "The selected IEI value year by year, with its linear trend." },
+    how: { cz: "Přerušovaná červená čára je lineární trend; strmější sklon znamená rychlejší změnu. Karta výše ukazuje rozdíl jen mezi zvolenými roky, graf celý průběh.", en: "The dashed red line is the linear trend; a steeper slope means faster change. The card above shows the difference between the chosen years only, the chart shows the whole path." },
+    period: { cz: "2017–2025, hodnoty po rocích.", en: "2017–2025, yearly values." },
+    expert: { cz: "Lineární trend je proložen metodou nejmenších čtverců (OLS) devíti ročními hodnotami. Významnost sklonu: dvoustranný t-test (n = 9, 7 stupňů volnosti), významný při p < 0,05. Kontrola odolnosti: Theilův–Senův sklon.", en: "The linear trend is an ordinary least squares (OLS) fit through the nine yearly values. Significance of the slope: a two-sided t-test (n = 9, 7 degrees of freedom), significant at p < 0.05. Robustness check: Theil–Sen slope." },
+  },
+  delta: {
+    what: { cz: "Rozdíl IEI mezi počátečním a koncovým rokem zvoleného časového rozsahu.", en: "The difference in IEI between the start and end year of the selected temporal range." },
+    how: { cz: "Vyjádřeno v procentních bodech (p. b.). Kladná hodnota (modrá) = nárůst, záporná (červená) = pokles.", en: "Expressed in percentage points (p.p.). A positive value (blue) = increase, a negative value (red) = decrease." },
+    period: { cz: "Roky zvolené v části „Časový rozsah“.", en: "The years chosen under “Temporal range”." },
+    expert: { cz: "Roční sklon trendu je sklon lineární regrese (OLS) devíti ročních hodnot 2017–2025. Významnost: dvoustranný t-test sklonu (p-hodnota z regrese, n = 9, 7 stupňů volnosti); „významný“ znamená p < 0,05. R² udává, jak dobře přímka odpovídá hodnotám. Pro kontrolu odolnosti vůči odlehlým hodnotám se u ORP počítá i Theilův–Senův sklon.", en: "The annual trend slope is the slope of a linear regression (OLS) through the nine yearly values 2017–2025. Significance: a two-sided t-test of the slope (p-value from the regression, n = 9, 7 degrees of freedom); “significant” means p < 0.05. R² shows how well the line fits the values. As a check against outliers, a Theil–Sen slope is also computed for ORPs." },
+  },
+  compare: {
+    what: { cz: "Volba počátečního a koncového roku pro statistiky změny.", en: "The choice of start and end year for the change statistics." },
+    how: { cz: "Ovlivňuje pouze režim „Změna v čase“ (kartu změny, graf a žebříčky). Neovlivňuje režim „Roční přehled“.", en: "It only affects the “Change over time” mode (change card, chart and ranking lists), not the “Annual overview” mode." },
+    period: { cz: "2017–2025.", en: "2017–2025." },
+  },
+  leaderboard_levels: {
+    what: { cz: "ORP seřazené podle hodnoty IEI ve vybraném roce, nejlepší nahoře.", en: "ORPs ordered by their IEI value in the selected year, best first." },
+    how: { cz: "Nejedná se o hodnotící žebříček, jde o seřazení naměřených hodnot. Po výběru ORP se řadí ORP ve stejném kraji.", en: "This is an ordering of measured values, not a performance ranking. Once an ORP is selected, the list covers the ORPs of the same region." },
+    period: { cz: "Vybraný rok (2017–2025).", en: "The selected year (2017–2025)." },
+  },
+  leaderboard_change: {
+    what: { cz: "ORP seřazené podle změny IEI mezi zvolenými roky, nejpříznivější vývoj nahoře.", en: "ORPs ordered by their change in IEI between the chosen years, most favourable first." },
+    how: { cz: "Hodnota je IEI v koncovém roce minus IEI v počátečním roce, v procentních bodech. Modrá = nárůst, červená = pokles, bez ohledu na pořadí v seznamu.", en: "The value is the IEI in the end year minus the IEI in the start year, in percentage points. Blue = increase, red = decrease, regardless of the position in the list." },
+    period: { cz: "Roky zvolené v části „Časový rozsah“.", en: "The years chosen under “Temporal range”." },
+  },
+  change_map: {
+    what: { cz: "Změna IEI mezi lety 2017 a 2025 v každém pixelu mapy.", en: "The change in the IEI between 2017 and 2025 in each map pixel." },
+    how: { cz: "Červená = pokles, bílá = beze změny, modrá = nárůst. Čím sytější barva, tím silnější změna.", en: "Red = decrease, white = no change, blue = increase. The more saturated the colour, the stronger the change." },
+    period: { cz: "2017–2025.", en: "2017–2025." },
+    expert: { cz: "Pro každý pixel je počítán sklon lineární regrese (OLS) devíti ročních hodnot IEI.", en: "For each pixel, the slope of a linear regression (OLS) through the nine yearly IEI values is computed." },
+  },
+};
+
+function infoIcon(key) {
+  return '<button type="button" class="info-icon" data-info="' + key + '" aria-label="' + T("info_label") + '" aria-haspopup="dialog">i</button>';
+}
+
+let infoPopoverEl = null;
+let infoPopoverOwner = null;
+function closeInfoPopover() {
+  if (infoPopoverEl) { infoPopoverEl.remove(); infoPopoverEl = null; }
+  if (infoPopoverOwner) { infoPopoverOwner.setAttribute("aria-expanded", "false"); infoPopoverOwner = null; }
+}
+function openInfoPopover(btn) {
+  const key = btn.getAttribute("data-info");
+  const d = INFO[key];
+  if (!d) return;
+  closeInfoPopover();
+  const el = document.createElement("div");
+  el.id = "info-popover";
+  el.setAttribute("role", "dialog");
+  el.setAttribute("aria-label", T("info_label"));
+  let html = '<h4>' + T("info_what") + "</h4><p>" + d.what[lang] + "</p>" +
+    "<h4>" + T("info_how") + "</h4><p>" + d.how[lang] + "</p>" +
+    "<h4>" + T("info_source") + "</h4><p>" + T("info_source_base") + " " + d.period[lang] + "</p>";
+  if (d.expert) html += "<details><summary>" + T("info_expert") + "</summary><p>" + d.expert[lang] + "</p></details>";
+  html += '<button type="button" class="info-popover-close" aria-label="' + (lang === "cz" ? "Zavřít" : "Close") + '">&times;</button>';
+  el.innerHTML = html;
+  document.body.appendChild(el);
+  const r = btn.getBoundingClientRect();
+  const w = el.offsetWidth, h = el.offsetHeight;
+  let left = Math.min(Math.max(8, r.left - 20), window.innerWidth - w - 8);
+  let top = r.bottom + 8;
+  if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 8);
+  el.style.left = left + "px";
+  el.style.top = top + "px";
+  btn.setAttribute("aria-expanded", "true");
+  infoPopoverEl = el;
+  infoPopoverOwner = btn;
+  el.querySelector(".info-popover-close").addEventListener("click", function () { closeInfoPopover(); btn.focus(); });
+}
+// Capture phase so it still works inside Leaflet controls, which stop click
+// propagation to the document.
+document.addEventListener("click", function (e) {
+  const icon = e.target.closest ? e.target.closest(".info-icon[data-info]") : null;
+  if (icon) {
+    e.preventDefault();
+    if (infoPopoverOwner === icon) closeInfoPopover();
+    else openInfoPopover(icon);
+    return;
+  }
+  if (infoPopoverEl && !(e.target.closest && e.target.closest("#info-popover"))) closeInfoPopover();
+}, true);
+document.addEventListener("keydown", function (e) {
+  if (e.key === "Escape" && infoPopoverEl) { const o = infoPopoverOwner; closeInfoPopover(); if (o) o.focus(); }
+});
+
 let mode = "current"; // "current" | "change"
 let displayKey = "I"; // "I" | "dominant" | "F" | "A" | "G" | "U"
+window.__displayKey = () => displayKey;
 let currentYearIdx = YEARS.length - 1;
 let currentYear = YEARS[currentYearIdx];
 let fromYear = YEARS[0];
@@ -670,10 +958,8 @@ function absoluteColor(value, lo, hi) {
 }
 // diverging scale for deltas / neighbor comparisons
 function diffColor(diff, maxAbs) {
-  const clamped = Math.max(-maxAbs, Math.min(maxAbs, diff));
-  const t = clamped / maxAbs;
-  if (t >= 0) return lerpColor("#e8e4d8", "#1f7a3d", t);
-  return lerpColor("#e8e4d8", "#b23a2e", -t);
+  const c = changeRgb((diff / maxAbs + 1) / 2);
+  return "rgb(" + c[0] + "," + c[1] + "," + c[2] + ")";
 }
 
 const HEALTH_DOMAIN = [0.35, 0.75]; // fitted to observed RIEI/bucket range so colors actually spread out
@@ -709,18 +995,38 @@ BUCKET_KEYS.forEach((k) => { BUCKET_DOMAINS[k] = computeBucketDomain(k); });
 
 const YOY_MAX_DELTA = 0.15;
 const RANGE_MAX_DELTA = 0.22;
+// Symmetric range M for the change scale, per parameter: the largest change
+// any ORP shows between any two years, rounded up to the next 5 p. b. The same
+// M is used for every period, so maps of the same quantity stay comparable.
+const CHANGE_M = {};
+["I", "F", "A", "G", "U"].forEach((key) => {
+  let worst = 0;
+  Object.keys(ORP_DATA).forEach((kod) => {
+    if (kod === NATIONAL_KOD) return;
+    const vals = YEARS.map((y) => { const p = ORP_DATA[kod].y[String(y)]; return p ? p[key] : null; }).filter((v) => v != null);
+    if (vals.length) worst = Math.max(worst, Math.max.apply(null, vals) - Math.min.apply(null, vals));
+  });
+  CHANGE_M[key] = Math.max(0.05, Math.ceil(worst * 20) / 20);
+});
+// To set the change-scale range M by hand (e.g. if the team prefers other
+// values), fill this in. Values are on the 0-1 index scale, so 0.25 = 25 p. b.
+// Example: const CHANGE_M_OVERRIDE = { I: 0.25, F: 0.25 };
+const CHANGE_M_OVERRIDE = {};
+Object.keys(CHANGE_M_OVERRIDE).forEach((k) => { CHANGE_M[k] = CHANGE_M_OVERRIDE[k]; });
 
 // ---------------------------------------------------------------------
 // Map setup
 // ---------------------------------------------------------------------
-const map = L.map("map", { zoomControl: true }).setView([49.75, 15.4], 8);
+const map = L.map("map", { zoomControl: false }).setView([49.75, 15.4], 8);
+L.control.zoom({ position: "topright" }).addTo(map);
 
 // Single fixed basemap -- Esri World Imagery (satellite) with a reference
 // layer of place names/boundaries drawn on top. Per client feedback the
 // Light Gray / Dark Gray canvas options were just noise next to the
 // satellite view, and with only one real option left there's no reason to
 // keep a basemap selector in the UI at all -- this is just always on.
-L.layerGroup([
+// Satellite basemap (Esri World Imagery + place names), always on.
+const basemapGroup = L.layerGroup([
   L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
     attribution: "&copy; Esri &mdash; Esri, Maxar, Earthstar Geographics",
     maxZoom: 19,
@@ -728,7 +1034,7 @@ L.layerGroup([
   L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}", {
     maxZoom: 19,
   }),
-]).addTo(map);
+]).addTo(map); // satellite basemap is always on
 
 map.createPane("rasterPane");
 map.getPane("rasterPane").style.zIndex = 450;
@@ -842,8 +1148,21 @@ const ChromaKeyTileLayer = L.GridLayer.extend({
         // hi removes that visible edge entirely.
         const lo = this.options.chromaLo != null ? this.options.chromaLo : 15;
         const hi = this.options.chromaHi != null ? this.options.chromaHi : 95;
+        const recolor = !!this.options.recolorDiverging;
         for (let i = 0; i < d.length; i += 4) {
           const lum = Math.max(d[i], d[i + 1], d[i + 2]);
+          // Display-side recolor of the published tiles (orange-white-green)
+          // to the spec's red-white-blue change ramp: sign from which hue
+          // dominates, size from distance to white, scaled to the symmetric
+          // range M so zero sits in the middle of the scale.
+          if (recolor && lum > lo) {
+            const r = d[i], g = d[i + 1], b = d[i + 2];
+            let sgn = 0;
+            if (g > r + 2) sgn = Math.min(1, (253 - r) / 253);
+            else if (r > g + 2) sgn = -Math.min(1, (253 - b) / 169);
+            const c = changeRgb((sgn + 1) / 2);
+            d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2];
+          }
           if (lum <= lo) {
             d[i + 3] = 0;
           } else if (lum < hi) {
@@ -864,16 +1183,20 @@ const ChromaKeyTileLayer = L.GridLayer.extend({
   },
 });
 
+// Layer menu depends on the mode (brief A5/C1): the trend layer belongs
+// only to "Change over time"; "Annual overview" offers the four snapshot
+// rasters.
 function buildRasterSelect() {
   const sel = document.getElementById("raster-select");
-  const options = [
-    ["none", T("raster_none")],
-    ["health", T("raster_health")],
-    ["photo", T("raster_photo")],
-    ["cooling", T("raster_cooling")],
-    ["hetero", T("raster_hetero")],
-    ["trend", T("raster_trend")],
-  ];
+  const options = mode === "change"
+    ? [["none", T("raster_none")], ["trend", T("raster_trend")]]
+    : [
+        ["none", T("raster_none")],
+        ["health", T("raster_health")],
+        ["photo", T("raster_photo")],
+        ["cooling", T("raster_cooling")],
+        ["hetero", T("raster_hetero")],
+      ];
   sel.innerHTML = options.map((o) => '<option value="' + o[0] + '"' + (o[0] === activeRasterKey ? " selected" : "") + ">" + o[1] + "</option>").join("");
 }
 
@@ -881,7 +1204,6 @@ function setRasterLayer(key) {
   if (activeRasterLayer) { map.removeLayer(activeRasterLayer); activeRasterLayer = null; }
   activeRasterKey = key;
   document.getElementById("raster-opacity-group").style.display = key === "none" ? "none" : "flex";
-  document.getElementById("raster-clear-btn").style.display = key === "none" ? "none" : "flex";
   if (RASTER_TILE_URLS[key]) {
     const tileOptions = {
       attribution: "Člověk v tísni",
@@ -893,6 +1215,7 @@ function setRasterLayer(key) {
     };
     // Only the self-hosted trend layer needs the black-speckle fix above --
     // the four ArcGIS-hosted layers already handle no-data via real alpha.
+    if (key === "trend") tileOptions.recolorDiverging = true;
     activeRasterLayer = key === "trend"
       ? new ChromaKeyTileLayer(RASTER_TILE_URLS[key], tileOptions)
       : L.tileLayer(RASTER_TILE_URLS[key], tileOptions);
@@ -938,7 +1261,6 @@ function clearRaster() {
   document.getElementById("raster-select").value = "none";
   setRasterLayer("none");
 }
-document.getElementById("raster-clear-btn").addEventListener("click", clearRaster);
 
 // ---------------------------------------------------------------------
 // Raster tour -- a guided sequence of cards (4 country-wide indicator
@@ -950,7 +1272,7 @@ document.getElementById("raster-clear-btn").addEventListener("click", clearRaste
 // [lat, lon] pair for the 7 example cards (real locations supplied by
 // the client).
 // ---------------------------------------------------------------------
-const TOUR_CARDS = [
+const ALL_TOUR_CARDS = [
   { img: "tour_images/1.jpg", raster: "health", coords: null, titleKey: "tour_1_title", descKey: "tour_1_desc" },
   { img: "tour_images/2.jpg", raster: "photo", coords: null, titleKey: "tour_2_title", descKey: "tour_2_desc" },
   { img: "tour_images/3.jpg", raster: "cooling", coords: null, titleKey: "tour_3_title", descKey: "tour_3_desc" },
@@ -967,6 +1289,11 @@ const TOUR_CARDS = [
   { img: "tour_images/10.jpg", raster: "hetero", coords: [49.09517578389606, 14.784737621169171], titleKey: "tour_10_title", descKey: "tour_10_desc" },
   { img: "tour_images/11.jpg", raster: "photo", coords: [50.89959373264084, 14.38515229597439], titleKey: "tour_11_title", descKey: "tour_11_desc" },
 ];
+// The trend layer belongs only to "Change over time" (brief A5/C1), so the
+// tour shows only its card in that mode and the snapshot cards otherwise.
+function tourCards() {
+  return ALL_TOUR_CARDS.filter((c) => (mode === "change") === (c.raster === "trend"));
+}
 const TOUR_ZOOM = 13;
 let tourIndex = 0;
 let tourOpen = false;
@@ -974,25 +1301,25 @@ let tourOpen = false;
 function buildTourJump() {
   const sel = document.getElementById("tour-jump");
   if (!sel) return;
-  sel.innerHTML = TOUR_CARDS.map((c, i) => '<option value="' + i + '">' + (i + 1) + ". " + T(c.titleKey) + "</option>").join("");
+  sel.innerHTML = tourCards().map((c, i) => '<option value="' + i + '">' + (i + 1) + ". " + T(c.titleKey) + "</option>").join("");
   sel.value = String(tourIndex);
 }
 
 function renderTourCard(idx) {
-  tourIndex = Math.max(0, Math.min(TOUR_CARDS.length - 1, idx));
-  const card = TOUR_CARDS[tourIndex];
+  tourIndex = Math.max(0, Math.min(tourCards().length - 1, idx));
+  const card = tourCards()[tourIndex];
   document.getElementById("tour-img").src = card.img;
   document.getElementById("tour-card-title").textContent = T(card.titleKey);
   document.getElementById("tour-card-desc").textContent = T(card.descKey);
-  document.getElementById("tour-counter").textContent = (tourIndex + 1) + " / " + TOUR_CARDS.length;
+  document.getElementById("tour-counter").textContent = (tourIndex + 1) + " / " + tourCards().length;
   const jumpSel = document.getElementById("tour-jump");
   if (jumpSel) jumpSel.value = String(tourIndex);
   document.getElementById("tour-prev-btn").disabled = tourIndex === 0;
-  document.getElementById("tour-next-btn").disabled = tourIndex === TOUR_CARDS.length - 1;
+  document.getElementById("tour-next-btn").disabled = tourIndex === tourCards().length - 1;
 
   // Drive the raster layer (and keep the existing dropdown in sync) to
   // match this card.
-  document.getElementById("raster-select").value = card.raster;
+  document.getElementById("raster-select").value = card.raster; // may be blank if this mode's menu lacks it; the layer is still driven below
   setRasterLayer(card.raster);
 
   // Drive the map view: fly to a real location for example cards, or
@@ -1001,7 +1328,7 @@ function renderTourCard(idx) {
   if (card.coords) {
     map.flyTo(card.coords, TOUR_ZOOM, { duration: 1.1 });
   } else if (geoLayer) {
-    try { map.flyToBounds(geoLayer.getBounds(), { padding: [16, 16], duration: 1.1 }); } catch (e) {}
+    try { map.flyToBounds(geoLayer.getBounds(), Object.assign(fitOpts(), { duration: 1.1 })); } catch (e) {}
   }
 }
 
@@ -1012,15 +1339,7 @@ function openTour() {
   // "block" so it lays out correctly, and the map needs to be told its
   // container just shrank or its tiles stay sized for the old width.
   document.getElementById("tour-overlay").style.display = "flex";
-  // Three docked columns (tour + map + info panel) at once is too tight
-  // to be usable, especially on narrower screens -- auto-collapse the
-  // right-hand info panel while touring so the tour and map have the
-  // room. Only if it wasn't already collapsed by the user themselves
-  // (don't fight a deliberate choice they made before opening the tour).
-  if (!panelCollapsed) {
-    panelAutoCollapsedByTour = true;
-    togglePanel();
-  }
+  positionOverlays();
   buildTourJump();
   renderTourCard(tourIndex);
   setTimeout(() => map.invalidateSize(), 260);
@@ -1034,17 +1353,10 @@ function closeTour() {
   // raster the last card used stuck on.
   document.getElementById("raster-select").value = "none";
   setRasterLayer("none");
-  // Bring the info panel back, but only if the tour was the one that
-  // hid it -- leave it collapsed if the user had already hidden it
-  // themselves beforehand.
-  if (panelAutoCollapsedByTour) {
-    panelAutoCollapsedByTour = false;
-    togglePanel();
-  }
   setTimeout(() => map.invalidateSize(), 260);
 }
 
-function tourNext() { if (tourIndex < TOUR_CARDS.length - 1) renderTourCard(tourIndex + 1); }
+function tourNext() { if (tourIndex < tourCards().length - 1) renderTourCard(tourIndex + 1); }
 function tourPrev() { if (tourIndex > 0) renderTourCard(tourIndex - 1); }
 
 document.getElementById("tour-jump").addEventListener("change", function (e) {
@@ -1086,23 +1398,11 @@ let panelCollapsed = false;
 // hidden it themselves before opening the tour, which should be left alone.
 let panelAutoCollapsedByTour = false;
 function togglePanel() {
-  panelCollapsed = !panelCollapsed;
-  // If the panel is genuinely open again (whoever called this), the
-  // "tour auto-collapsed it" bookkeeping no longer applies -- e.g. the
-  // user manually reopens it via the edge tab while the tour is still
-  // open, so closing the tour afterward shouldn't re-collapse it on them.
-  if (!panelCollapsed) panelAutoCollapsedByTour = false;
-  const panel = document.getElementById("panel");
-  panel.classList.toggle("collapsed", panelCollapsed);
-  // Icon-only close (inside the panel) and reopen (edge tab) buttons --
-  // no text to swap, just which one is visible.
-  document.getElementById("panel-reopen-btn").style.display = panelCollapsed ? "flex" : "none";
-  // Let the CSS transition finish, then tell Leaflet its container size
-  // changed -- otherwise the map keeps rendering at its old width and
-  // tiles look cut off/blank in the newly-revealed strip until the next
-  // manual pan or zoom.
-  setTimeout(() => map.invalidateSize(), 260);
+  setTimeout(() => map.invalidateSize(), 0);
 }
+
+// Distance scale bar (brief A7), separate from the colour legend.
+L.control.scale({ position: "bottomleft", imperial: false, maxWidth: 140 }).addTo(map);
 
 const legend = L.control({ position: "bottomright" });
 legend.onAdd = function () {
@@ -1112,6 +1412,22 @@ legend.onAdd = function () {
   return div;
 };
 legend.addTo(map);
+
+// End labels of the change legends: the word plus the range M in p. b. (the
+// team asked to show the numbers once M is confirmed from the real data).
+// `clip` marks layers whose values beyond M are shown at full colour.
+// Jakub's comment (S11 #5 / brief C6): legends show the words only. Set to
+// true to show the range numbers under "Pokles" / "Nárůst" once the team
+// agrees to them.
+const SHOW_LEGEND_NUMBERS = false;
+function legendEndLabel(word, sign, m, opts) {
+  if (!SHOW_LEGEND_NUMBERS) return word;
+  opts = opts || {};
+  const v = m * 100;
+  const dec = Math.abs(v - Math.round(v)) < 1e-9 ? 0 : 1;
+  const num = (opts.clip ? (sign < 0 ? "≤ " : "≥ ") : "") + (sign < 0 ? "−" : "+") + fmtNum(v, dec) + "\u00a0" + T("pp_unit") + (opts.perYear ? T("per_year") : "");
+  return word + "<small>" + num + "</small>";
+}
 
 function renderLegend(div) {
   div = div || document.getElementById("legend-box");
@@ -1125,26 +1441,27 @@ function renderLegend(div) {
   if (!rasterActive) {
     if (mode === "current") {
       if (displayKey === "dominant") {
-        html += "<strong>" + T("legend_dominant") + ' <span class="info-icon" title="' + T("legend_dominant_info") + '">i</span></strong>';
+        html += "<strong>" + T("legend_dominant") + ' ' + infoIcon("dominant") + '</strong>';
         BUCKET_KEYS.forEach((k) => {
           html += '<span class="swatch" style="background:' + BUCKET_COLORS[k] + '"></span>' + label(k) + "<br>";
         });
       } else if (displayKey === "I") {
-        html += "<strong>" + T("legend_health") + ' <span class="info-icon" title="' + T("legend_health_info") + '">i</span></strong>';
+        html += "<strong>" + T("legend_health") + ' ' + infoIcon("health_legend") + '</strong>';
         html += '<div class="gradient-bar" style="background:linear-gradient(90deg,#b23a2e,#e8c547,#1f7a3d)"></div>';
-        html += '<div class="gradient-labels"><span>' + Math.round(HEALTH_DOMAIN[0] * 100) + "%</span><span>" + Math.round(HEALTH_DOMAIN[1] * 100) + "%</span></div>";
+        html += '<div class="gradient-labels"><span>' + pctLevel(HEALTH_DOMAIN[0] * 100) + "</span><span>" + pctLevel(HEALTH_DOMAIN[1] * 100) + "</span></div>";
       } else {
         // Same absolute red-yellow-green legend style as Ecosystem Integrity,
         // just with this bucket's own observed-range domain.
         const dom = BUCKET_DOMAINS[displayKey] || [0, 1];
-        html += "<strong>" + label(displayKey) + " " + T("legend_health") + ' <span class="info-icon" title="' + T("legend_health_info") + '">i</span></strong>';
+        html += "<strong>" + label(displayKey) + " " + T("legend_health") + ' ' + infoIcon("health_legend") + '</strong>';
         html += '<div class="gradient-bar" style="background:linear-gradient(90deg,#b23a2e,#e8c547,#1f7a3d)"></div>';
-        html += '<div class="gradient-labels"><span>' + Math.round(dom[0] * 100) + "%</span><span>" + Math.round(dom[1] * 100) + "%</span></div>";
+        html += '<div class="gradient-labels"><span>' + pctLevel(dom[0] * 100) + "</span><span>" + pctLevel(dom[1] * 100) + "</span></div>";
       }
     } else {
-      html += "<strong>" + (displayKey === "I" ? T("health_index") : label(displayKey)) + " " + T("legend_change") + "</strong>";
-      html += '<div class="gradient-bar" style="background:linear-gradient(90deg,#b23a2e,#e8e4d8,#1f7a3d)"></div>';
-      html += '<div class="gradient-labels"><span>' + T("decline") + "</span><span>" + T("improvement") + "</span></div>";
+      html += "<strong>" + T("legend_change").replace("{PARAM}", paramName(displayKey)).replace("{FROM}", fromYear).replace("{TO}", toYear) + "</strong>";
+      html += '<div class="gradient-bar" style="background:linear-gradient(90deg,' + CHG_GRADIENT_CSS + ')"></div>';
+      const mm = CHANGE_M[displayKey === "dominant" ? "I" : displayKey] || RANGE_MAX_DELTA;
+      html += '<div class="gradient-labels"><span>' + legendEndLabel(T("decline"), -1, mm) + "</span><span>0</span><span>" + legendEndLabel(T("improvement"), 1, mm) + "</span></div>";
     }
     if (mode === "current" && yearHasNoData(currentYear)) {
       html += '<div class="na-note">' + currentYear + ": " + T("no_data") + "</div>";
@@ -1158,9 +1475,12 @@ function renderLegend(div) {
   if (rl) {
     const gradientStops = rl.stopsCss || rl.stops.join(",");
     html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid #ddd;">';
-    html += "<strong>" + T("raster_" + activeRasterKey) + "</strong>";
+    html += "<strong>" + T("raster_" + activeRasterKey) + (rl.infoKey ? " " + infoIcon(rl.infoKey) : "") + "</strong>";
     html += '<div class="gradient-bar" style="background:linear-gradient(90deg,' + gradientStops + ')"></div>';
-    html += '<div class="gradient-labels"><span>' + (rl.lowText || T("raster_legend_low")) + "</span><span>" + (rl.highText || T("raster_legend_high")) + "</span></div>";
+    const fmtLegendEnd = (s) => String(s).replace(/(\d)%$/, (m, d) => d + (lang === "cz" ? "\u00a0%" : "%"));
+    const lowLabel = rl.lowKey ? (rl.mValue ? legendEndLabel(T(rl.lowKey), -1, rl.mValue, { clip: true, perYear: true }) : T(rl.lowKey)) : fmtLegendEnd(rl.lowText || T("raster_legend_low"));
+    const highLabel = rl.highKey ? (rl.mValue ? legendEndLabel(T(rl.highKey), 1, rl.mValue, { clip: true, perYear: true }) : T(rl.highKey)) : fmtLegendEnd(rl.highText || T("raster_legend_high"));
+    html += '<div class="gradient-labels"><span>' + lowLabel + "</span>" + (rl.midText ? "<span>" + rl.midText + "</span>" : "") + "<span>" + highLabel + "</span></div>";
     html += "</div>";
   }
 
@@ -1177,14 +1497,14 @@ function styleFeature(feature) {
   // which ORPs the side panel's "kraj median" comparison is actually drawn
   // from, instead of having to guess or cross-reference a name list.
   const isKrajMate = !isSelected && currentKrajMates.has(kod);
-  let fillColor = "#cccccc";
+  let fillColor = NO_DATA_COLOR;
 
   if (mode === "current") {
     const props = orpYear(kod, currentYear);
     if (props) {
       if (displayKey === "dominant") {
         const cls = dominantClass(props);
-        fillColor = cls ? BUCKET_COLORS[cls] : "#cccccc";
+        fillColor = cls ? BUCKET_COLORS[cls] : NO_DATA_COLOR;
       } else if (displayKey === "I") {
         fillColor = absoluteColor(props.I, HEALTH_DOMAIN[0], HEALTH_DOMAIN[1]);
       } else {
@@ -1193,7 +1513,7 @@ function styleFeature(feature) {
         // neighbor/region numbers are still available in the side panel.
         const val = props[displayKey];
         const dom = BUCKET_DOMAINS[displayKey];
-        fillColor = (val === null || val === undefined) ? "#cccccc" : absoluteColor(val, dom[0], dom[1]);
+        fillColor = (val === null || val === undefined) ? NO_DATA_COLOR : absoluteColor(val, dom[0], dom[1]);
       }
     }
   } else {
@@ -1203,7 +1523,7 @@ function styleFeature(feature) {
       const key = displayKey === "I" ? "I" : displayKey;
       const a = fromP[key], b = toP[key];
       if (a !== null && a !== undefined && b !== null && b !== undefined) {
-        fillColor = diffColor(b - a, RANGE_MAX_DELTA);
+        fillColor = diffColor(b - a, CHANGE_M[key] || RANGE_MAX_DELTA);
       }
     }
   }
@@ -1281,16 +1601,119 @@ function computeNiceAxisMin(valueArrays) {
   return Math.max(0, Math.floor((min * 0.85) / 5) * 5); // ~15% headroom below the lowest actual value
 }
 
+// Differences between two index values are percentage POINTS (p. b. in
+// Czech, p.p. in English), never "%". Plain "%" is reserved for index
+// levels (0-100 %). Non-breaking space keeps number and unit together.
+// Number formatting per language: Czech uses a decimal comma and a space
+// before "%" ("52 %", "-6,1 p. b."), English uses a dot and no space
+// ("52%", "-6.1 p.p."). Negatives use a true minus sign (U+2212).
+function fmtNum(x, dec) {
+  let s = Number(x).toFixed(dec);
+  if (lang === "cz") s = s.replace(".", ",");
+  return s.replace("-", "−");
+}
+// Index LEVEL (0-100 scale), e.g. "52 %" / "52%". Only levels use %.
+function pctLevel(x, dec) {
+  return fmtNum(x, dec || 0) + (lang === "cz" ? " %" : "%");
+}
+// Index DIFFERENCE in percentage points; signed=true adds an explicit "+".
+function ppText(delta, signed) {
+  const v = pctNum(delta);
+  const sign = signed && Number(v.toFixed(1)) > 0 ? "+" : "";
+  return sign + fmtNum(v, 1) + " " + T("pp_unit");
+}
+
+// Short parameter name used in titles: "IEI" or "IEI (Les)". Built so that
+// further parameters (NDVI, LST) can be added later (brief C3/C9).
+function paramName(key) {
+  return (!key || key === "I" || key === "dominant") ? "IEI" : "IEI (" + label(key) + ")";
+}
+function fillT(str, vars) {
+  return Object.keys(vars).reduce((acc, k) => acc.split("{" + k + "}").join(vars[k]), str);
+}
+
+// Comparison with the regional median, in percentage points (brief A16).
+function regionCompareHtml(diff) {
+  const v = pctNum(diff);
+  const r = Number(Math.abs(v).toFixed(1));
+  if (r === 0) return '<span class="trend-flat">' + T("cmp_same") + "</span>";
+  const x = fmtNum(r, 1) + "\u00a0" + T("pp_unit_long");
+  return '<span class="' + (v > 0 ? "trend-up" : "trend-down") + '">' + T(v > 0 ? "cmp_above" : "cmp_below").replace("{X}", x) + "</span>";
+}
+
+// Hatched fill for the "Unused potential" doughnut segment (brief A8), so
+// it reads as potential that is missing rather than a solid category.
+function hatchPattern(color) {
+  try {
+    const c = document.createElement("canvas");
+    c.width = c.height = 8;
+    const x = c.getContext("2d");
+    x.fillStyle = "#ffffff";
+    x.fillRect(0, 0, 8, 8);
+    x.strokeStyle = color;
+    x.lineWidth = 2;
+    x.beginPath();
+    x.moveTo(-1, 9); x.lineTo(9, -1);
+    x.moveTo(-3, 5); x.lineTo(5, -3);
+    x.moveTo(3, 11); x.lineTo(11, 3);
+    x.stroke();
+    return x.createPattern(c, "repeat") || color;
+  } catch (e) { return color; }
+}
+
+// Shared options for the time-series charts: slightly stronger gridlines
+// (G9), level values shown without decimals in tooltips (C16), and a
+// generous hit area so users need not hover exactly on a small point (C17).
+function timeSeriesOptions(niceMin, niceMax) {
+  return {
+    responsive: true,
+    animation: false,
+    interaction: { mode: "nearest", intersect: false },
+    elements: { point: { hitRadius: 16, hoverRadius: 5 } },
+    scales: {
+      y: { min: niceMin, max: niceMax, ticks: { callback: (v) => pctLevel(v) }, grid: { color: "rgba(0,0,0,0.16)" } },
+      x: { grid: { color: "rgba(0,0,0,0.12)" } },
+    },
+    plugins: {
+      legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 10 } } },
+      tooltip: { callbacks: { label: (c) => c.dataset.label + ": " + (c.parsed.y != null ? pctLevel(c.parsed.y) : T("na")) } },
+    },
+  };
+}
+// Keyboard access to chart values (C17): focus the chart, then use the
+// left/right arrow keys to step through the years.
+function enableChartKeyboard(chart, canvas) {
+  if (!canvas) return;
+  canvas.setAttribute("tabindex", "0");
+  let idx = -1;
+  canvas.addEventListener("keydown", function (e) {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const n = chart.data.labels.length;
+    idx = idx < 0 ? (e.key === "ArrowRight" ? 0 : n - 1) : Math.max(0, Math.min(n - 1, idx + (e.key === "ArrowRight" ? 1 : -1)));
+    const els = [];
+    chart.data.datasets.forEach((d, di) => { if (d.data[idx] != null && !d.hidden) els.push({ datasetIndex: di, index: idx }); });
+    if (!els.length) return;
+    const pt = chart.getDatasetMeta(els[0].datasetIndex).data[idx];
+    chart.setActiveElements(els);
+    chart.tooltip.setActiveElements(els, { x: pt.x, y: pt.y });
+    chart.update();
+  });
+}
+
 function trendArrow(delta, threshold) {
   threshold = threshold || 0.005;
   if (delta === null || delta === undefined) return '<span class="trend-flat">' + T("na") + "</span>";
-  const p = pctNum(delta).toFixed(1) + "%";
+  const p = ppText(delta, true);
   if (Math.abs(delta) < threshold) return '<span class="trend-flat">&#8594; ' + p + "</span>";
-  if (delta > 0) return '<span class="trend-up">&#9650; +' + p + "</span>";
+  if (delta > 0) return '<span class="trend-up">&#9650; ' + p + "</span>";
   return '<span class="trend-down">&#9660; ' + p + "</span>";
 }
 
 function tooltipHtml(feature) {
+  // While a raster is on, the map shows overall IEI, so the tooltip is
+  // locked to overall IEI too instead of following the Display dropdown.
+  const displayKey = activeRasterKey !== "none" ? "I" : window.__displayKey();
   const kod = feature.properties.KOD;
   const name = orpName(kod);
   let html = "<strong>" + name + "</strong><br>";
@@ -1301,14 +1724,14 @@ function tooltipHtml(feature) {
     if (displayKey === "dominant") {
       const cls = dominantClass(props);
       const clsShare = cls && props.s ? props.s[cls] : null;
-      html += T("dominant_class") + ": " + label(cls) + " (" + (clsShare != null ? Math.round(clsShare * 100) + "% " + T("share_of_area") : T("na")) + ")";
+      html += T("dominant_class") + ": " + label(cls) + " (" + (clsShare != null ? pctLevel(clsShare * 100) + " " + T("share_of_area") : T("na")) + ")";
     } else if (displayKey === "I") {
-      html += T("health_index") + ": " + (props.I != null ? Math.round(props.I * 100) + "%" : T("na"));
+      html += "IEI " + currentYear + ": " + (props.I != null ? pctLevel(props.I * 100) : T("na"));
     } else {
       const val = props[displayKey];
       const rMed = kod !== NATIONAL_KOD ? regionMedian(kod, currentYear, displayKey) : null;
-      html += label(displayKey) + ": " + (val != null ? val.toFixed(3) : T("na")) + "<br>";
-      html += T("region_median") + ": " + (rMed != null ? rMed.toFixed(3) : T("na"));
+      html += paramName(displayKey) + " " + currentYear + ": " + (val != null ? pctLevel(val * 100) : T("na")) + "<br>";
+      html += T("region_median") + ": " + (rMed != null ? pctLevel(rMed * 100) : T("na"));
     }
   } else {
     const fromP = orpYear(kod, fromYear);
@@ -1317,7 +1740,7 @@ function tooltipHtml(feature) {
     const a = fromP ? fromP[key] : null;
     const b = toP ? toP[key] : null;
     const delta = (a != null && b != null) ? b - a : null;
-    html += (displayKey === "I" ? T("health_index") : label(displayKey)) + " " + fromYear + "→" + toYear + ": " + trendArrow(delta, 0.01);
+    html += paramName(displayKey) + " " + fromYear + "→" + toYear + ": " + trendArrow(delta, 0.0005);
   }
   return html;
 }
@@ -1329,14 +1752,29 @@ function onEachFeature(feature, layer) {
     showPanel(selectedKod);
   });
   layer.bindTooltip(function () { return tooltipHtml(feature); }, { sticky: true });
+  // Only one tooltip may ever be open. Leaflet can drop a "mouseout" (fast
+  // mouse moves over many small polygons, or the layer being re-created
+  // while hovered), which left earlier tooltips stuck on screen.
+  layer.on("mouseover", function () {
+    if (lastTooltipLayer && lastTooltipLayer !== layer) lastTooltipLayer.closeTooltip();
+    lastTooltipLayer = layer;
+  });
+  layer.on("mouseout", function () { layer.closeTooltip(); });
 }
+let lastTooltipLayer = null;
+function closeAllTooltips() {
+  if (lastTooltipLayer) { try { lastTooltipLayer.closeTooltip(); } catch (e) {} lastTooltipLayer = null; }
+  map.eachLayer(function (l) { if (l instanceof L.Tooltip) map.removeLayer(l); });
+}
+map.on("mouseout movestart zoomstart", closeAllTooltips);
 
 function renderLayer() {
+  closeAllTooltips();
   currentKrajMates = (selectedKod && selectedKod !== NATIONAL_KOD) ? new Set(regionPeers(selectedKod)) : new Set();
   if (geoLayer) map.removeLayer(geoLayer);
   geoLayer = L.geoJSON(GEOM, { style: styleFeature, onEachFeature: onEachFeature, pane: "boundaryPane" }).addTo(map);
   if (!window.__fitted) {
-    try { map.fitBounds(geoLayer.getBounds(), { padding: [16, 16] }); window.__fitted = true; } catch (e) {}
+    try { map.fitBounds(geoLayer.getBounds(), fitOpts()); window.__fitted = true; } catch (e) {}
   }
   // Force the selected ORP's outline to draw on top of every neighboring
   // polygon, regardless of feature order in the GeoJSON. Without this, a
@@ -1356,6 +1794,19 @@ function renderLayer() {
       }
     });
   }
+  if (selectedLabelMarker) { map.removeLayer(selectedLabelMarker); selectedLabelMarker = null; }
+  if (selectedKod && selectedKod !== NATIONAL_KOD) {
+    geoLayer.eachLayer(function (layer) {
+      if (layer.feature && layer.feature.properties && layer.feature.properties.KOD === selectedKod) {
+        try {
+          selectedLabelMarker = L.marker(layer.getBounds().getCenter(), {
+            icon: L.divIcon({ className: "sel-pill", html: "<i></i>" + orpName(selectedKod), iconSize: null }),
+            interactive: false, keyboard: false,
+          }).addTo(map);
+        } catch (e) {}
+      }
+    });
+  }
   // Re-added after geoLayer so it draws on top -- geoLayer and the kraj
   // outline share boundaryPane, and re-adding geoLayer here (e.g. on every
   // ORP click) would otherwise leave its thin gray/selection lines drawn
@@ -1368,6 +1819,101 @@ function renderLayer() {
 // Side panel: Current State mode
 // ---------------------------------------------------------------------
 function healthColor(v) { return absoluteColor(v, HEALTH_DOMAIN[0], HEALTH_DOMAIN[1]); }
+
+// ---------------------------------------------------------------------
+// Panel building blocks (colleagues' design): breadcrumb, header with badge,
+// key/value rows, collapsible chart section, rank lines.
+// ---------------------------------------------------------------------
+const CHEV_SVG = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg>';
+let chartCollapsed = false;
+function kvRow(labelHtml, valueHtml) {
+  return '<div class="kv"><span>' + labelHtml + "</span><span>" + valueHtml + "</span></div>";
+}
+function signClass(delta) {
+  const r = Number(pctNum(delta).toFixed(1));
+  return r > 0 ? "trend-up" : (r < 0 ? "trend-down" : "trend-flat");
+}
+function ppValue(delta) {
+  return '<span class="' + signClass(delta) + '">' + ppText(delta, true) + "</span>";
+}
+function signedPpNumber(delta) {
+  const v = pctNum(delta);
+  return (Number(v.toFixed(1)) > 0 ? "+" : "") + fmtNum(v, 1);
+}
+// Full parameter name for sub-titles: the indicator, or "IEI (class)".
+function paramFull(key) {
+  return (!key || key === "I" || key === "dominant") ? T("health_index") : paramName(key);
+}
+function breadcrumbsHtml(kod) {
+  if (kod === NATIONAL_KOD) return "";
+  const rn = regionName(kod);
+  return '<div class="p-crumbs"><a onclick="closeToNational()">&larr; ' + orpName(NATIONAL_KOD) + "</a>" +
+    (rn ? '<span class="sep">·</span><a data-r="' + rn.replace(/"/g, "&quot;") + '" onclick="zoomToRegion(this.getAttribute(\'data-r\'))">' + rn + "</a>" : "") + "</div>";
+}
+function panelHeaderHtml(kod, badge, indicatorText) {
+  const isNat = kod === NATIONAL_KOD;
+  const sub = isNat ? T("national_sub") : T("orp_word") + " " + kod + (regionName(kod) ? " · <b>" + regionName(kod) + "</b>" : "");
+  return breadcrumbsHtml(kod) +
+    '<div class="p-head"><div><h2>' + orpName(kod) + '</h2><div class="p-sub">' + sub + '</div><span class="p-indicator">' + indicatorText + "</span></div>" +
+    '<div class="p-badge ' + (badge.cls || "") + '"><b>' + badge.value + "</b>" + (badge.unit ? "<small>" + badge.unit + "</small>" : "") + "</div></div>";
+}
+function chartSectionHtml(kod, titleKey, infoKey) {
+  const forKey = mode === "change" ? displayKey : "I";
+  const who = kod === NATIONAL_KOD ? orpName(kod) : T("orp_word") + " " + orpName(kod);
+  const aria = T(titleKey) + " – " + who;
+  return '<div class="p-section' + (chartCollapsed ? " collapsed" : "") + '" id="chart-section"><div class="p-section-head"><div><h3>' + T(titleKey) +
+    '</h3><div class="p-sub2">' + who + " · " + paramFull(forKey) + '</div></div><div class="head-actions">' + infoIcon(infoKey) +
+    '<button type="button" class="chev-btn" onclick="toggleChartSection()" aria-label="' + T("collapse_label") + '">' + CHEV_SVG + "</button></div></div>" +
+    '<div class="p-body"><div class="chart-wrap"><canvas id="chart" height="200" aria-label="' + aria + '"></canvas></div></div></div>';
+}
+function toggleChartSection() {
+  chartCollapsed = !chartCollapsed;
+  const sec = document.getElementById("chart-section");
+  if (sec) sec.classList.toggle("collapsed", chartCollapsed);
+  if (!chartCollapsed && chartInstance) setTimeout(() => chartInstance.resize(), 0);
+}
+// Position of an ORP's value among the ORPs of its region and of the country
+// (1 = highest / largest increase). Display only -- no new calculation of the
+// underlying data.
+function rankText(kod, valFn) {
+  const mine = valFn(kod);
+  if (mine == null) return T("na");
+  const all = Object.keys(ORP_DATA).filter((k) => k !== NATIONAL_KOD);
+  const rk = (ids) => {
+    let n = 0, better = 0;
+    ids.forEach((k) => { const v = valFn(k); if (v == null) return; n++; if (v > mine) better++; });
+    return { r: better + 1, n: n };
+  };
+  const reg = rk([kod].concat(regionPeers(kod)));
+  const nat = rk(all);
+  return fillT(T("rank_in_region"), { R: reg.r, N: reg.n }) + " · " + fillT(T("rank_in_country"), { R: nat.r, N: nat.n });
+}
+function changeRowsHtml(kod, key) {
+  const delta = computeDelta(kod, key);
+  const isNat = kod === NATIONAL_KOD;
+  const natMed = median(Object.keys(ORP_DATA).filter((k) => k !== NATIONAL_KOD).map((k) => computeDelta(k, key)));
+  let html = kvRow(T("row_total_change"), delta != null ? ppValue(delta) : T("na"));
+  if (!isNat) {
+    const regMed = median(regionPeers(kod).map((k) => computeDelta(k, key)));
+    html += kvRow(T("region_median"), regMed != null ? ppValue(regMed) : T("na"));
+    html += kvRow(T("row_vs_region"), delta != null && regMed != null ? ppValue(delta - regMed) : T("na"));
+    html += kvRow(T("national_median"), natMed != null ? ppValue(natMed) : T("na"));
+    html += kvRow(T("row_rank_change"), rankText(kod, (k) => computeDelta(k, key)));
+  } else {
+    html += kvRow(T("national_median"), natMed != null ? ppValue(natMed) : T("na"));
+  }
+  // Slope of the linear trend and its statistical significance (p-value of the
+  // regression slope), as stored with each ORP -- display only.
+  const tr = orpTrend(kod, key);
+  if (tr && tr.slope != null) {
+    html += kvRow(T("row_slope"), '<span class="' + signClass(tr.slope) + '">' + ppText(tr.slope, true) + T("per_year") + "</span>");
+    if (tr.p != null) {
+      const pTxt = tr.p < 0.001 ? "< " + fmtNum(0.001, 3) : fmtNum(tr.p, 2);
+      html += kvRow(T("row_signif"), T(tr.p < 0.05 ? "signif_yes" : "signif_no").replace("{P}", pTxt));
+    }
+  }
+  return html;
+}
 
 function renderCurrentPanel(kod) {
   const rankingHtml = renderCurrentLeaderboard(kod);
@@ -1401,7 +1947,7 @@ function renderCurrentPanel(kod) {
 
   const idxVal = props ? props[badgeKey] : null;
   const idxColor = bucketColor(badgeKey, idxVal);
-  const idxPct = idxVal != null ? Math.round(idxVal * 100) + "%" : T("na");
+  const idxPct = idxVal != null ? pctLevel(idxVal * 100) : T("na");
   const idxDelta = (props && prevProps) ? props[badgeKey] - prevProps[badgeKey] : null;
   // Region (kraj) comparison only, per client request -- dropped the
   // direct-neighbor (shared-boundary) comparison entirely, since having
@@ -1412,7 +1958,7 @@ function renderCurrentPanel(kod) {
   const trend = orpTrend(kod, badgeKey);
   let trendSummary = "";
   if (trend && trend.slope !== null) {
-    trendSummary = T("trend_summary").replace("{LABEL}", badgeLabel) + " " + trendArrow(trend.slope, 0.0005) + " " + T("trend_summary_suffix");
+    trendSummary = T("trend_summary").replace("{LABEL}", badgeKey === "I" ? "IEI" : badgeLabel) + " " + trendArrow(trend.slope, 0.0005) + " " + T("trend_summary_suffix");
   }
 
   // Composition + contribution pies are back to always showing (per client
@@ -1425,10 +1971,10 @@ function renderCurrentPanel(kod) {
   let pieHtml = "";
   let contribPieHtml = "";
   if (props && props.s) {
-    pieHtml = '<div class="card"><h3>' + T("composition_title") + ' <span class="info-icon" title="' + T("composition_info") + '">i</span></h3><div class="pie-wrap">' +
+    pieHtml = '<div class="card"><h3>' + T("composition_title") + ' ' + infoIcon("composition") + '</h3><div class="pie-wrap">' +
       '<canvas id="pie-chart"></canvas>' +
       '<div class="pie-legend">' +
-      BUCKET_KEYS.map((k) => '<div style="opacity:' + (isFadedBucket(k) ? "0.3" : "1") + ';"><span class="swatch" style="background:' + BUCKET_COLORS[k] + '"></span>' + label(k) + ": " + Math.round((props.s[k] || 0) * 100) + "%</div>").join("") +
+      BUCKET_KEYS.map((k) => '<div style="opacity:' + (isFadedBucket(k) ? "0.3" : "1") + ';"><span class="swatch" style="background:' + BUCKET_COLORS[k] + '"></span>' + label(k) + ": " + pctLevel((props.s[k] || 0) * 100) + "</div>").join("") +
       "</div></div></div>";
 
     // Contribution-to-index pie: each bucket's EI value weighted by its
@@ -1438,11 +1984,11 @@ function renderCurrentPanel(kod) {
     const contributions = BUCKET_KEYS.map((k) => (props[k] != null ? props[k] * (props.s[k] || 0) : 0));
     const contribSum = contributions.reduce((a, b) => a + b, 0);
     const untapped = Math.max(0, 1 - contribSum);
-    contribPieHtml = '<div class="card"><h3>' + T("contribution_title") + ' <span class="info-icon" title="' + T("contribution_info") + '">i</span></h3><div class="pie-wrap">' +
+    contribPieHtml = '<div class="card"><h3>' + T("contribution_title") + ' ' + infoIcon("contribution") + '</h3><div class="pie-wrap">' +
       '<canvas id="pie-chart-contrib"></canvas>' +
       '<div class="pie-legend">' +
-      BUCKET_KEYS.map((k, i) => '<div style="opacity:' + (isFadedBucket(k) ? "0.3" : "1") + ';"><span class="swatch" style="background:' + BUCKET_COLORS[k] + '"></span>' + label(k) + ": " + Math.round(contributions[i] * 100) + "%</div>").join("") +
-      '<div style="opacity:' + (featuredBucket ? "0.3" : "1") + ';"><span class="swatch" style="background:' + UNTAPPED_COLOR + '"></span>' + T("untapped_potential") + ": " + Math.round(untapped * 100) + "%</div>" +
+      BUCKET_KEYS.map((k, i) => '<div style="opacity:' + (isFadedBucket(k) ? "0.3" : "1") + ';"><span class="swatch" style="background:' + BUCKET_COLORS[k] + '"></span>' + label(k) + ": " + pctLevel(contributions[i] * 100) + "</div>").join("") +
+      '<div style="opacity:' + (featuredBucket ? "0.3" : "1") + ';"><span class="swatch" style="background:repeating-linear-gradient(45deg,' + UNTAPPED_COLOR + ' 0,' + UNTAPPED_COLOR + ' 2px,#fff 2px,#fff 4px)"></span>' + T("untapped_potential") + ": " + pctLevel(untapped * 100) + "</div>" +
       "</div></div></div>";
   }
 
@@ -1466,41 +2012,38 @@ function renderCurrentPanel(kod) {
       if (restSum > 0) rows.push({ label: T("subcategory_other"), value: restSum });
       const colors = rows.map((_, i) => subcatColor(displayKey, i, rows.length));
       subPieData = { rows, colors, total };
-      subPieHtml = '<div class="card"><h3>' + T("subcategory_title").replace("{LABEL}", label(displayKey)) + ' <span class="info-icon" title="' + T("subcategory_info") + '">i</span></h3><div class="pie-wrap">' +
+      subPieHtml = '<div class="card"><h3>' + T("subcategory_title").replace("{LABEL}", label(displayKey)) + ' ' + infoIcon("subcategory") + '</h3><div class="pie-wrap">' +
         '<canvas id="pie-chart-sub"></canvas>' +
         '<div class="pie-legend">' +
-        rows.map((r, i) => '<div><span class="swatch" style="background:' + colors[i] + '"></span>' + r.label + ": " + Math.round((r.value / total) * 100) + "%</div>").join("") +
+        rows.map((r, i) => '<div><span class="swatch" style="background:' + colors[i] + '"></span>' + r.label + ": " + pctLevel((r.value / total) * 100) + "</div>").join("") +
         "</div></div></div>";
     }
   }
 
-  const closeBtn = isNational ? "" : '<button onclick="closeToNational()" style="float:right;border:none;background:#d4a017;color:#14418b;border-radius:14px;padding:5px 12px 5px 10px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">&larr; ' + T("back_to_national") + "</button>";
-  const subLine = isNational ? T("national_sub") : T("orp_code") + ": " + kod + (regionName(kod) ? " · " + regionName(kod) : "");
-
   const panel = document.getElementById("panel-content");
+  const levelOf = (k) => { const pp = orpYear(k, currentYear); return pp ? pp[badgeKey] : null; };
+  const natLevels = Object.keys(ORP_DATA).filter((k) => k !== NATIONAL_KOD).map(levelOf).filter((v) => v != null);
+  const natMedLevel = median(natLevels);
+  let rows = kvRow((featuredBucket ? label(displayKey) + " – " : "") + T("row_value"), idxVal != null ? pctLevel(idxVal * 100, 1) : T("na"));
+  if (idxDelta != null && prevYear !== undefined) rows += kvRow(T("yoy") + " (" + T("since") + " " + prevYear + ")", ppValue(idxDelta));
+  if (!isNational) {
+    rows += kvRow(T("region_median"), idxRMed != null ? pctLevel(idxRMed * 100, 1) : T("na"));
+    // Full sentence in percentage points (brief A16): "O 1,1 p. b. vyšší ve srovnání s krajským mediánem"
+    rows += '<div class="kv"><span>' + (idxVal != null && idxRMed != null ? regionCompareHtml(idxVal - idxRMed) : T("na")) + "</span></div>";
+    rows += kvRow(T("national_median"), natMedLevel != null ? pctLevel(natMedLevel * 100, 1) : T("na"));
+    rows += kvRow(T("row_rank_level"), rankText(kod, levelOf));
+  } else if (natMedLevel != null) {
+    rows += kvRow(T("national_median"), pctLevel(natMedLevel * 100, 1));
+  }
   panel.innerHTML =
-    "<h2>" + closeBtn + name + "</h2>" +
-    '<div class="sub">' + subLine + "</div>" +
-    // Colored tag naming the featured land-use category, so it stays
-    // obvious while scrolling through the composition pie / trend chart
-    // below that everything on this page is scoped to that one category.
-    (featuredBucket ? '<div style="margin:2px 0 12px;"><span style="display:inline-block;background:' + BUCKET_COLORS[displayKey] + ';color:#fff;font-size:11px;font-weight:700;letter-spacing:.03em;padding:4px 11px;border-radius:12px;">' + T("viewing_label") + " " + label(displayKey) + "</span></div>" : "") +
-    '<div class="card"><h3>' + badgeLabel + (badgeKey === "I" ? ' <span class="info-icon" title="' + T("tooltip_index_info") + '">i</span>' : "") + '</h3>' +
-    '<div class="sub" style="margin-bottom:4px;">' + T("index_in_year").replace("{LABEL}", badgeLabel) + " " + currentYear + "</div>" +
-    '<span class="index-badge" style="background:' + idxColor + '">' + idxPct + "</span>" +
-    (idxDelta != null ? ' &nbsp; <span style="font-size:12px;" title="' + T("yoy") + '">' + T("yoy") + ": " + trendArrow(idxDelta) + (prevYear !== undefined ? " " + T("since") + " " + prevYear : "") + "</span>" : "") +
-    (trendSummary ? '<div class="sub" style="margin-top:8px;">' + trendSummary + "</div>" : "") +
-    (kod !== NATIONAL_KOD ? (
-      '<div class="sub" style="margin-top:6px;">' + T("comparison_desc") + " (" + regionName(kod) + ").</div>" +
-      '<div class="stat-box" style="margin-top:6px;">' +
-      T("region_median") + ": " + (idxRMed != null ? pctNum(idxRMed).toFixed(1) + "%" : T("na")) + "<br>" +
-      T("vs_region") + ": " + (idxVal != null && idxRMed != null ? ((idxVal - idxRMed) >= 0 ? '<span class="trend-up">' + T("above_by") + " " + pctNum(idxVal - idxRMed).toFixed(1) + "%</span>" : '<span class="trend-down">' + T("below_by") + " " + pctNum(Math.abs(idxVal - idxRMed)).toFixed(1) + "%</span>") : T("na")) +
-      "</div>"
-    ) : "") +
+    panelHeaderHtml(kod, { cls: "", value: idxPct, unit: "IEI " + currentYear }, paramFull(badgeKey) + " · " + currentYear) +
+    '<div class="p-section"><div class="p-section-head"><h3>' + fillT(T("section_level_title"), { PARAM: paramName(badgeKey), YEAR: currentYear }) + '</h3><div class="head-actions">' + infoIcon("iei") + "</div></div>" +
+    rows +
+    (trendSummary ? '<div class="kv-note">' + trendSummary + "</div>" : "") +
+    (!isNational ? '<div class="kv-note">' + T("comparison_desc") + " (" + regionName(kod) + ").</div>" : "") +
     "</div>" +
     pieHtml + contribPieHtml + subPieHtml +
-    '<div class="card"><h3>' + T("history_title") + ' <span class="info-icon" title="' + T("history_info_current") + '">i</span></h3><div class="chart-wrap"><canvas id="chart" height="200"></canvas></div>' +
-    '<div class="sub" style="margin-top:6px;">' + T("values_note") + "</div></div>" +
+    chartSectionHtml(kod, "chart_history_title", "history_current") +
     rankingHtml;
 
   if (pieInstance) { pieInstance.destroy(); pieInstance = null; }
@@ -1532,7 +2075,7 @@ function renderCurrentPanel(kod) {
         datasets: [{
           data: contributions.concat([untapped]),
           backgroundColor: BUCKET_KEYS.map((k) => isFadedBucket(k) ? hexToRgba(BUCKET_COLORS[k], 0.25) : BUCKET_COLORS[k])
-            .concat([featuredBucket ? hexToRgba(UNTAPPED_COLOR, 0.25) : UNTAPPED_COLOR]),
+            .concat([hatchPattern(featuredBucket ? hexToRgba(UNTAPPED_COLOR, 0.35) : UNTAPPED_COLOR)]),
         }],
       },
       options: { plugins: { legend: { display: false } }, cutout: "55%", animation: animatePieOnNextRender ? {} : false },
@@ -1586,8 +2129,8 @@ function renderCurrentPanel(kod) {
   datasets.push({
     label: label("I"),
     data: YEARS.map((y) => { const p = rec.y[String(y)]; return p && p.I != null ? p.I * 100 : null; }),
-    borderColor: aClassIsFeatured ? "rgba(20,65,139,0.55)" : "#14418b",
-    backgroundColor: aClassIsFeatured ? "rgba(20,65,139,0.55)" : "#14418b",
+    borderColor: aClassIsFeatured ? "rgba(0,114,112,0.55)" : "#007270",
+    backgroundColor: aClassIsFeatured ? "rgba(0,114,112,0.55)" : "#007270",
     borderWidth: aClassIsFeatured ? 2 : 4,
     borderDash: [5, 3],
     spanGaps: true,
@@ -1600,20 +2143,14 @@ function renderCurrentPanel(kod) {
   const niceMin = computeNiceAxisMin(datasets.map((d) => d.data));
   const ctx2 = document.getElementById("chart").getContext("2d");
   if (chartInstance) chartInstance.destroy();
+  // animation is off inside timeSeriesOptions -- this chart redraws on every
+  // ORP click, year-slider move and Display change.
   chartInstance = new Chart(ctx2, {
     type: "line",
     data: { labels: labels, datasets: datasets },
-    options: {
-      responsive: true,
-      // Off, same reasoning as the Change-mode chart -- this one redraws
-      // on every ORP click, year-slider move, and Display-dropdown change,
-      // and Chart.js's default draw-in animation on each of those read as
-      // noise rather than a meaningful transition.
-      animation: false,
-      scales: { y: { min: niceMin, max: niceMax, ticks: { callback: (v) => v + "%" } } },
-      plugins: { legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 10 } } } },
-    },
+    options: timeSeriesOptions(niceMin, niceMax),
   });
+  enableChartKeyboard(chartInstance, document.getElementById("chart"));
 }
 
 // ---------------------------------------------------------------------
@@ -1626,33 +2163,71 @@ function computeDelta(kod, key) {
   return b[key] - a[key];
 }
 
-function leaderboardHtml(rows, titleKey, lowKey, highKey, noteKey, scopeLabel, periodLabel) {
-  let titleHtml = periodLabel ? T(titleKey).replace("{PERIOD}", periodLabel) : T(titleKey);
-  titleHtml += scopeLabel ? " — " + scopeLabel : "";
+// Ranking lists. `rows` is sorted ascending by value. Best values are shown
+// FIRST (top list), worst below (brief A11). cfg:
+//   kind: "level" (IEI in one year, shown in %) | "change" (difference in
+//         percentage points, coloured by sign, never by list position)
+//   title, note: ready-made HTML strings
+//   kod: selected ORP (or null/NATIONAL), allRows: every ORP's value, used
+//        for the national median; rows: the (possibly region-scoped) list
+function leaderboardHtml(cfg) {
+  const rows = cfg.rows, kind = cfg.kind;
+  const infoKey = kind === "level" ? "leaderboard_levels" : "leaderboard_change";
+  // Context line so the table stands on its own (selected ORP / country).
+  const ctxName = (cfg.kod && cfg.kod !== NATIONAL_KOD) ? T("orp_word") + " " + orpName(cfg.kod) : orpName(NATIONAL_KOD);
+  const head = '<div class="card"><h3>' + cfg.title + " " + infoIcon(infoKey) + '</h3><div class="sub" style="margin:-2px 0 10px;">' + ctxName + '</div><div class="leaderboard">';
 
   if (rows.length < 2) {
-    return '<div class="card"><h3>' + titleHtml + ' <span class="info-icon" title="' + T("leaderboard_info") + '">i</span></h3><div class="leaderboard">' +
-      '<div class="sub">' + T("region_too_small") + "</div></div></div>";
+    return head + '<div class="sub">' + T("region_too_small") + "</div></div></div>";
   }
 
   // Cap to 5 per side but never let the two halves overlap when the scoped
   // list (e.g. a single kraj) has fewer than 10 ORPs in it.
   const half = Math.min(5, Math.floor(rows.length / 2));
-  const worst = rows.slice(0, half);
-  const best = rows.slice(rows.length - half).reverse();
+  const worst = rows.slice(0, half);                // lowest values
+  const best = rows.slice(rows.length - half).reverse(); // highest values, best first
 
-  function rowsHtml(list, cls) {
+  const fmtVal = (v) => kind === "level" ? pctLevel(v * 100, 1) : ppText(v, true);
+  const cellClass = (v) => {
+    if (kind === "level") return "val-neutral";
+    const r = Number(pctNum(v).toFixed(1));
+    return r > 0 ? "val-up" : (r < 0 ? "val-down" : "val-flat");
+  };
+  function rowsHtml(list) {
     return list.map((r, i) => (
-      "<tr onclick=\"selectFromLeaderboard('" + r.kod + "')\"><td>" + (i + 1) + "</td><td>" + orpName(r.kod) +
-      '</td><td class="' + cls + '">' + (r.val >= 0 ? "+" : "") + pctNum(r.val).toFixed(1) + "%</td></tr>"
+      "<tr" + (r.kod === cfg.kod ? ' class="sel-row"' : "") + " onclick=\"selectFromLeaderboard('" + r.kod + "')\"><td>" + (i + 1) + "</td><td>" + orpName(r.kod) +
+      '</td><td class="' + cellClass(r.val) + '">' + fmtVal(r.val) + "</td></tr>"
     )).join("");
   }
 
-  return '<div class="card"><h3>' + titleHtml + ' <span class="info-icon" title="' + T("leaderboard_info") + '">i</span></h3><div class="leaderboard">' +
-    '<table><thead><tr><th></th><th>&#9660; ' + T(lowKey) + '</th><th></th></tr></thead><tbody>' + rowsHtml(worst, "val-down") + "</tbody></table>" +
+  // Titles follow the actual signs (brief C12), never the list position.
+  let topTitle, bottomTitle;
+  if (kind === "level") {
+    topTitle = T("highest_values");
+    bottomTitle = T("lowest_values");
+  } else {
+    topTitle = best.some((r) => Number(pctNum(r.val).toFixed(1)) > 0) ? T("biggest_improvement") : T("smallest_decrease");
+    bottomTitle = worst.every((r) => Number(pctNum(r.val).toFixed(1)) > 0) ? T("smallest_increase") : T("biggest_decline");
+  }
+
+  // Reference values (brief A13/C13): regional median (other ORPs of the
+  // same region, same definition as the detail panel) and national median.
+  const scoped = cfg.kod && cfg.kod !== NATIONAL_KOD;
+  const medianOf = (list) => median(list.map((r) => r.val));
+  let refs = [];
+  if (scoped) {
+    const regMed = medianOf(rows.filter((r) => r.kod !== cfg.kod));
+    refs.push(T("region_median") + ": " + (regMed != null ? fmtVal(regMed) : T("na")));
+  }
+  const natMed = medianOf(cfg.allRows);
+  refs.push(T("national_median") + ": " + (natMed != null ? fmtVal(natMed) : T("na")));
+
+  return head +
+    '<table><thead><tr><th></th><th>&#9650; ' + topTitle + '</th><th></th></tr></thead><tbody>' + rowsHtml(best) + "</tbody></table>" +
     '<div style="height:8px;"></div>' +
-    '<table><thead><tr><th></th><th>&#9650; ' + T(highKey) + '</th><th></th></tr></thead><tbody>' + rowsHtml(best, "val-up") + "</tbody></table>" +
-    '<div class="sub" style="margin-top:6px;">' + T(noteKey) + "</div></div></div>";
+    '<table><thead><tr><th></th><th>&#9660; ' + bottomTitle + '</th><th></th></tr></thead><tbody>' + rowsHtml(worst) + "</tbody></table>" +
+    '<div class="sub" style="margin-top:6px;">' + refs.join(" · ") + "</div>" +
+    '<div class="sub" style="margin-top:4px;">' + cfg.note + "</div></div></div>";
 }
 
 // Change-over-time mode: rank by delta between the two selected years.
@@ -1663,32 +2238,38 @@ function renderChangeLeaderboard(kod) {
   const key = displayKey === "I" ? "I" : displayKey;
   const scoped = kod && kod !== NATIONAL_KOD;
   const allowed = scoped ? new Set([kod, ...regionPeers(kod)]) : null;
-  const rows = Object.keys(ORP_DATA)
+  const allRows = Object.keys(ORP_DATA)
     .filter((k) => k !== NATIONAL_KOD)
-    .filter((k) => !allowed || allowed.has(k))
     .map((k) => ({ kod: k, val: computeDelta(k, key) }))
     .filter((r) => r.val !== null);
-  rows.sort((a, b) => a.val - b.val);
+  const rows = allRows.filter((r) => !allowed || allowed.has(r.kod)).sort((a, b) => a.val - b.val);
   const scopeLabel = scoped ? regionName(kod) : null;
-  return leaderboardHtml(rows, "leaderboard_title", "biggest_decline", "biggest_improvement", "change_note", scopeLabel, fromYear + "→" + toYear);
+  const vars = { PARAM: paramName(displayKey), FROM: fromYear, TO: toYear };
+  return leaderboardHtml({
+    kind: "change", rows: rows, allRows: allRows, kod: kod,
+    title: fillT(T("leaderboard_title"), vars) + (scopeLabel ? " — " + scopeLabel : ""),
+    note: fillT(T("change_note"), vars),
+  });
 }
 
-// Current State mode (colleague comment #19): rank by the absolute value
-// in the single selected year, not by a delta -- so the user immediately
-// sees the best/worst-off ORPs for "right now" without switching modes.
-// Scoped to the selected ORP's own kraj (VUSC region) once an ORP is picked.
+// Annual overview: rank by the absolute IEI level in the single selected
+// year (not a delta). Scoped to the selected ORP's own kraj once picked.
 function renderCurrentLeaderboard(kod) {
   const key = displayKey === "dominant" ? "I" : displayKey;
   const scoped = kod && kod !== NATIONAL_KOD;
   const allowed = scoped ? new Set([kod, ...regionPeers(kod)]) : null;
-  const rows = Object.keys(ORP_DATA)
+  const allRows = Object.keys(ORP_DATA)
     .filter((k) => k !== NATIONAL_KOD)
-    .filter((k) => !allowed || allowed.has(k))
     .map((k) => { const p = orpYear(k, currentYear); return { kod: k, val: p ? p[key] : null }; })
     .filter((r) => r.val !== null);
-  rows.sort((a, b) => a.val - b.val);
+  const rows = allRows.filter((r) => !allowed || allowed.has(r.kod)).sort((a, b) => a.val - b.val);
   const scopeLabel = scoped ? regionName(kod) : null;
-  return leaderboardHtml(rows, "ranking_title", "lowest_values", "highest_values", "values_note", scopeLabel);
+  const filterActive = BUCKET_KEYS.includes(displayKey);
+  return leaderboardHtml({
+    kind: "level", rows: rows, allRows: allRows, kod: kod,
+    title: fillT(T("ranking_title"), { PARAM: paramName(key), YEAR: currentYear }) + (scopeLabel ? " — " + scopeLabel : ""),
+    note: fillT(T("values_note"), { YEAR: currentYear, FILTER: filterActive ? T("values_filter") : "" }),
+  });
 }
 
 window.selectFromLeaderboard = function (kod) {
@@ -1723,16 +2304,20 @@ function renderChangePanel(kod) {
   const trend = orpTrend(kod, key);
 
   const isNational = kod === NATIONAL_KOD;
-  const closeBtn = isNational ? "" : '<button onclick="closeToNational()" style="float:right;border:none;background:#d4a017;color:#14418b;border-radius:14px;padding:5px 12px 5px 10px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">&larr; ' + T("back_to_national") + "</button>";
-  const subLine = isNational ? T("national_sub") : T("orp_code") + ": " + kod + (regionName(kod) ? " · " + regionName(kod) : "");
-
   const panel = document.getElementById("panel-content");
+  const badge = delta == null
+    ? { cls: "", value: T("na"), unit: "" }
+    : { cls: signClass(delta) === "trend-up" ? "pos" : (signClass(delta) === "trend-down" ? "neg" : ""), value: signedPpNumber(delta), unit: T("pp_unit") };
+  const changeLong = displayKey === "I"
+    ? fillT(T("change_title"), { FROM: fromYear, TO: toYear })
+    : fillT(T("change_title_param"), { LABEL: label(displayKey), FROM: fromYear, TO: toYear });
   panel.innerHTML =
-    "<h2>" + closeBtn + name + "</h2>" +
-    '<div class="sub">' + subLine + "</div>" +
-    '<div class="card"><h3>' + (displayKey === "I" ? T("health_index") : label(displayKey)) + " " + fromYear + "→" + toYear + ' <span class="info-icon" title="' + T("delta_card_info") + '">i</span></h3><div class="stat-box">' +
-    trendArrow(delta, 0.01) + "</div></div>" +
-    '<div class="card"><h3>' + T("history_title") + ' <span class="info-icon" title="' + T("history_info_change") + '">i</span></h3><div class="chart-wrap"><canvas id="chart" height="200"></canvas></div></div>' +
+    panelHeaderHtml(kod, badge, paramFull(key) + " · " + fromYear + "–" + toYear) +
+    '<div class="p-section"><div class="p-section-head"><div><h3>' + fillT(T("section_change_title"), { FROM: fromYear, TO: toYear }) + '</h3><div class="p-sub2">' + changeLong +
+    '</div></div><div class="head-actions">' + infoIcon("delta") + "</div></div>" +
+    changeRowsHtml(kod, key) +
+    '<div class="kv-note">' + T("slope_note") + " " + T("significance_note") + "</div></div>" +
+    chartSectionHtml(kod, "chart_trend_title", "history_change") +
     leaderboard;
 
   const rec = ORP_DATA[kod];
@@ -1755,8 +2340,8 @@ function renderChangePanel(kod) {
   const datasets = [{
     label: displayKey === "I" ? label("I") : label(displayKey),
     data: dataVals,
-    borderColor: displayKey === "I" ? "#14418b" : BUCKET_COLORS[displayKey],
-    backgroundColor: displayKey === "I" ? "#14418b" : BUCKET_COLORS[displayKey],
+    borderColor: displayKey === "I" ? "#007270" : BUCKET_COLORS[displayKey],
+    backgroundColor: displayKey === "I" ? "#007270" : BUCKET_COLORS[displayKey],
     borderWidth: 3,
     spanGaps: true,
     tension: 0.25,
@@ -1766,7 +2351,7 @@ function renderChangePanel(kod) {
     datasets.push({
       label: T("trend_title"),
       data: trendLine,
-      borderColor: "#b23a2e",
+      borderColor: "#B54836",
       borderDash: [6, 4],
       borderWidth: 2,
       pointRadius: 0,
@@ -1781,22 +2366,15 @@ function renderChangePanel(kod) {
   chartInstance = new Chart(ctx, {
     type: "line",
     data: { labels: labels, datasets: datasets },
-    options: {
-      responsive: true,
-      // Off, per client feedback -- this chart redraws every time From/To
-      // changes, and Chart.js's default draw-in animation on every one of
-      // those redraws read as distracting "popping" noise rather than a
-      // meaningful transition.
-      animation: false,
-      scales: { y: { min: niceMin, max: niceMax, ticks: { callback: (v) => v + "%" } } },
-      plugins: { legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 10 } } } },
-    },
+    options: timeSeriesOptions(niceMin, niceMax),
   });
+  enableChartKeyboard(chartInstance, document.getElementById("chart"));
 }
 
 function showPanel(kod) {
   if (mode === "current") renderCurrentPanel(kod);
   else renderChangePanel(kod);
+  if (window.mobileAfterPanel) window.mobileAfterPanel();
 }
 
 // ---------------------------------------------------------------------
@@ -1818,6 +2396,8 @@ function buildYearSelects() {
   const toSel = document.getElementById("to-year-select");
   fromSel.innerHTML = YEARS.map((y) => '<option value="' + y + '"' + (y === fromYear ? " selected" : "") + ">" + y + "</option>").join("");
   toSel.innerHTML = YEARS.map((y) => '<option value="' + y + '"' + (y === toYear ? " selected" : "") + ">" + y + "</option>").join("");
+  const ySel = document.getElementById("year-select");
+  if (ySel) ySel.innerHTML = YEARS.map((y) => '<option value="' + y + '"' + (y === currentYear ? " selected" : "") + ">" + y + "</option>").join("");
 }
 
 document.getElementById("display-select").addEventListener("change", function (e) {
@@ -1826,10 +2406,9 @@ document.getElementById("display-select").addEventListener("change", function (e
   showPanel(selectedKod);
 });
 
-document.getElementById("year-slider").addEventListener("input", function (e) {
-  currentYearIdx = parseInt(e.target.value, 10);
-  currentYear = YEARS[currentYearIdx];
-  document.getElementById("year-label").textContent = currentYear;
+document.getElementById("year-select").addEventListener("change", function (e) {
+  currentYear = parseInt(e.target.value, 10);
+  currentYearIdx = YEARS.indexOf(currentYear);
   renderLayer();
   showPanel(selectedKod);
 });
@@ -1853,7 +2432,11 @@ function setMode(m) {
   // Time should always drop back into the normal choropleth ("vector
   // world") map -- a raster left on from a previous view shouldn't
   // follow the user into a mode it doesn't apply to.
+  closeInfoPopover();
+  if (tourOpen) closeTour();
+  tourIndex = 0;
   clearRaster();
+  buildRasterSelect();
   document.getElementById("mode-current").classList.toggle("active", m === "current");
   document.getElementById("mode-change").classList.toggle("active", m === "change");
   document.getElementById("current-year-group").style.display = m === "current" ? "flex" : "none";
@@ -1862,11 +2445,160 @@ function setMode(m) {
   // feedback that the year-range control should sit next to what it
   // actually affects (the change-analysis leaderboard/chart) instead of
   // implying it drives the whole dashboard from the header.
-  document.getElementById("range-year-group").style.display = m === "change" ? "block" : "none";
+  document.getElementById("range-year-group").style.display = m === "change" ? "flex" : "none";
+  document.getElementById("nav-map").classList.add("active");
+  buildYearSelects();
+  positionOverlays();
   if (m === "change" && displayKey === "dominant") displayKey = "I";
   buildDisplaySelect();
   renderLayer();
   showPanel(selectedKod);
+}
+
+
+// ---------------------------------------------------------------------
+// Map overlays layout, view controls
+// ---------------------------------------------------------------------
+let selectedLabelMarker = null;
+function filterCardHeight() {
+  const card = document.getElementById("filter-card");
+  return card ? card.offsetHeight : 0;
+}
+// Padding so fitted bounds are not hidden under the floating filter card.
+function fitOpts() {
+  const wide = window.innerWidth > 900;
+  // Narrow screens: the filter chip sits on top of the map and the bottom sheet
+  // covers its lower part, so keep fitted bounds clear of both.
+  if (!wide) return { paddingTopLeft: [12, 72], paddingBottomRight: [12, (window.mobileSheetPx ? window.mobileSheetPx() : 250) + 12] };
+  return { paddingTopLeft: [16, filterCardHeight() + 28], paddingBottomRight: [16, 16] };
+}
+function positionOverlays() {
+  const wide = window.innerWidth > 900;
+  const h = filterCardHeight();
+  const z = document.querySelector(".leaflet-top.leaflet-right");
+  if (z) z.style.marginTop = wide ? (h + 28) + "px" : "";
+  const tour = document.getElementById("tour-overlay");
+  if (tour) tour.style.top = wide ? (h + 32) + "px" : "16px";
+}
+window.addEventListener("resize", positionOverlays);
+
+function fitToSelection() {
+  if (!geoLayer) return;
+  if (!selectedKod || selectedKod === NATIONAL_KOD) {
+    try { map.fitBounds(geoLayer.getBounds(), fitOpts()); } catch (e) {}
+    return;
+  }
+  geoLayer.eachLayer(function (layer) {
+    if (layer.feature && layer.feature.properties && layer.feature.properties.KOD === selectedKod) {
+      try { map.fitBounds(layer.getBounds(), Object.assign(fitOpts(), { maxZoom: 12 })); } catch (e) {}
+    }
+  });
+}
+window.zoomToRegion = function (name) {
+  if (!geoLayer) return;
+  let b = null;
+  geoLayer.eachLayer(function (layer) {
+    const k = layer.feature && layer.feature.properties && layer.feature.properties.KOD;
+    const info = k ? REGION_INFO[k] : null;
+    if (info && info.name === name) {
+      const lb = layer.getBounds();
+      b = b ? b.extend(lb) : L.latLngBounds(lb.getSouthWest(), lb.getNorthEast());
+    }
+  });
+  if (b) { try { map.fitBounds(b, fitOpts()); } catch (e) {} }
+};
+// "Zobrazit": bring the map to the current selection (the filters themselves
+// apply immediately). "Obnovit": back to the default national overview.
+function applyView() { fitToSelection(); }
+function resetView() {
+  displayKey = "I";
+  currentYearIdx = YEARS.length - 1;
+  currentYear = YEARS[currentYearIdx];
+  fromYear = YEARS[0];
+  toYear = YEARS[YEARS.length - 1];
+  selectedKod = NATIONAL_KOD;
+  animatePieOnNextRender = true;
+  setMode("current");
+  fitToSelection();
+}
+
+// ---------------------------------------------------------------------
+// Top navigation: Metodika (methodology) and Data ke stažení (downloads)
+// ---------------------------------------------------------------------
+function showView() {
+  ["intro-banner", "contact-banner", "method-banner", "data-banner"].forEach((id) => { document.getElementById(id).style.display = "none"; });
+}
+function openMethod() {
+  const parts = [1, 2, 3, 4].map((i) => '<h3 class="method-h">' + T("method_h" + i) + "</h3><p>" + T("method_p" + i) + "</p>").join("");
+  document.getElementById("method-body").innerHTML =
+    '<span class="modal-eyebrow">' + T("method_eyebrow") + "</span><h2>" + T("method_title") + "</h2>" + parts +
+    '<h3 class="method-h">' + T("method_h5") + "</h3><p>" + T("intro_reference") +
+    ' <a href="https://doi.org/10.1016/j.scitotenv.2021.148994" target="_blank" rel="noopener">https://doi.org/10.1016/j.scitotenv.2021.148994</a></p>' +
+    '<button class="modal-continue-btn" onclick="closeMethod()">' + T("contact_close") + "</button>";
+  document.getElementById("method-banner").style.display = "flex";
+}
+function closeMethod() { document.getElementById("method-banner").style.display = "none"; }
+
+const DOWNLOADS = [
+  { id: "levels", t: "dl_levels_title", d: "dl_levels_desc" },
+  { id: "change", t: "dl_change_title", d: "dl_change_desc" },
+  { id: "trend", t: "dl_trend_title", d: "dl_trend_desc" },
+];
+function openData() {
+  const items = DOWNLOADS.map((it) =>
+    '<div class="dl-item"><div><b>' + T(it.t) + "</b><span>" + fillT(T(it.d), { FROM: fromYear, TO: toYear }) + '</span></div>' +
+    '<button type="button" class="btn-primary" onclick="downloadData(\'' + it.id + '\')">' + T("dl_button") + "</button></div>").join("");
+  document.getElementById("data-body").innerHTML =
+    '<span class="modal-eyebrow">' + T("data_eyebrow") + "</span><h2>" + T("data_title") + "</h2><p>" + T("data_intro") + "</p>" +
+    '<div class="dl-list">' + items + '</div><p class="kv-note">' + T("data_note") + "</p>" +
+    '<button class="modal-continue-btn" onclick="closeData()">' + T("contact_close") + "</button>";
+  document.getElementById("data-banner").style.display = "flex";
+}
+function closeData() { document.getElementById("data-banner").style.display = "none"; }
+
+// CSV export of the values already shown in the portal (nothing is
+// recalculated): built in the browser, UTF-8 with BOM so Excel reads the
+// Czech characters correctly.
+function csvCell(v) {
+  if (v === null || v === undefined) return "";
+  const t = String(v);
+  return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+}
+function downloadCsv(filename, rows) {
+  const text = "﻿" + rows.map((r) => r.map(csvCell).join(",")).join("\r\n") + "\r\n";
+  const blob = new Blob([text], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+const CSV_CLASSES = [["I", "iei"], ["F", "les"], ["A", "zemedelska_puda"], ["G", "travni_porosty"], ["U", "zastavene_uzemi"]];
+function orpKods() {
+  return Object.keys(ORP_DATA).filter((k) => k !== NATIONAL_KOD).sort((a, b) => Number(a) - Number(b));
+}
+function buildCsv(id) {
+  const pct = (v) => (v == null ? "" : (v * 100).toFixed(2));
+  const base = (k) => [k, ORP_DATA[k].n, regionName(k) || ""];
+  const rows = [];
+  if (id === "levels") {
+    rows.push(["orp_kod", "orp_nazev", "kraj", "rok"].concat(CSV_CLASSES.map((c) => c[1] + "_pct")));
+    orpKods().forEach((k) => YEARS.forEach((y) => {
+      const p = orpYear(k, y);
+      rows.push(base(k).concat([y], CSV_CLASSES.map((c) => (p ? pct(p[c[0]]) : ""))));
+    }));
+  } else if (id === "change") {
+    rows.push(["orp_kod", "orp_nazev", "kraj", "od", "do"].concat(CSV_CLASSES.map((c) => c[1] + "_zmena_pp")));
+    orpKods().forEach((k) => rows.push(base(k).concat([fromYear, toYear], CSV_CLASSES.map((c) => { const d = computeDelta(k, c[0]); return d == null ? "" : (d * 100).toFixed(2); }))));
+  } else {
+    rows.push(["orp_kod", "orp_nazev", "kraj"].concat(CSV_CLASSES.map((c) => c[1] + "_sklon_pp_za_rok")));
+    orpKods().forEach((k) => rows.push(base(k).concat(CSV_CLASSES.map((c) => { const t = orpTrend(k, c[0]); return t && t.slope != null ? (t.slope * 100).toFixed(3) : ""; }))));
+  }
+  return rows;
+}
+function downloadData(id) {
+  const names = { levels: "iei_hodnoty_orp_2017_2025.csv", change: "iei_zmena_orp_" + fromYear + "_" + toYear + ".csv", trend: "iei_trend_orp_2017_2025.csv" };
+  downloadCsv(names[id], buildCsv(id));
 }
 
 // ---------------------------------------------------------------------
@@ -1876,6 +2608,7 @@ function setMode(m) {
 // matching and the dropdown rendering; our code only has to react once a
 // name is actually chosen, which is a much smaller, more robust surface.
 const ORP_NAME_TO_KOD = {};
+const KRAJ_NAMES = new Set();
 function buildOrpDatalist() {
   const list = document.getElementById("orp-datalist");
   if (!list) return;
@@ -1884,13 +2617,24 @@ function buildOrpDatalist() {
     .filter((k) => k !== NATIONAL_KOD)
     .map((k) => ({ kod: k, name: orpName(k) }))
     .sort((a, b) => a.name.localeCompare(b.name, lang === "cz" ? "cs" : "en"));
-  list.innerHTML = names.map((r) => '<option value="' + r.name.replace(/"/g, "&quot;") + '"></option>').join("");
+  const krajNames = Array.from(new Set(Object.keys(REGION_INFO).map((k) => REGION_INFO[k] && REGION_INFO[k].name).filter(Boolean)))
+    .sort((a, b) => a.localeCompare(b, lang === "cz" ? "cs" : "en"));
+  KRAJ_NAMES.clear();
+  krajNames.forEach((n) => KRAJ_NAMES.add(n));
+  list.innerHTML = names.map((r) => '<option value="' + r.name.replace(/"/g, "&quot;") + '"></option>').join("") +
+    krajNames.map((n) => '<option value="' + n.replace(/"/g, "&quot;") + '"></option>').join("");
   names.forEach((r) => { ORP_NAME_TO_KOD[r.name] = r.kod; });
 }
 
 function trySelectOrpByName(rawName) {
   const name = (rawName || "").trim();
   const kod = ORP_NAME_TO_KOD[name];
+  if (!kod && KRAJ_NAMES.has(name)) {
+    window.zoomToRegion(name);
+    const inp = document.getElementById("orp-search-input");
+    if (inp) { inp.value = ""; inp.blur(); }
+    return true;
+  }
   if (!kod) return false; // no exact match yet -- user is still typing/browsing suggestions
   selectedKod = kod;
   renderLayer();
@@ -1899,7 +2643,7 @@ function trySelectOrpByName(rawName) {
   if (geoLayer) {
     geoLayer.eachLayer(function (layer) {
       if (layer.feature && layer.feature.properties && layer.feature.properties.KOD === kod) {
-        try { map.fitBounds(layer.getBounds(), { padding: [60, 60], maxZoom: 12 }); } catch (e) {}
+        try { map.fitBounds(layer.getBounds(), Object.assign(fitOpts(), { maxZoom: 12 })); } catch (e) {}
       }
     });
   }
@@ -1930,12 +2674,20 @@ function setLang(l) {
   // instead of visible text, so they need their own pass here.
   document.querySelectorAll("[data-i18n-title]").forEach((el) => { el.title = T(el.getAttribute("data-i18n-title")); });
   document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => { el.placeholder = T(el.getAttribute("data-i18n-placeholder")); });
-  document.getElementById("app-title").textContent = T("title");
+  document.getElementById("app-title").textContent = T("title_main");
+  document.getElementById("app-subtitle").textContent = T("title_sub");
+  document.title = T("title");
+  closeInfoPopover();
+  document.querySelectorAll("[data-info]").forEach((el) => { el.setAttribute("aria-label", T("info_label")); });
   buildDisplaySelect();
+  buildYearSelects();
   buildRasterSelect();
   buildOrpDatalist();
   renderLayer();
   showPanel(selectedKod);
+  if (document.getElementById("method-banner").style.display === "flex") openMethod();
+  if (document.getElementById("data-banner").style.display === "flex") openData();
+  positionOverlays();
   // Refresh the tour card's text (title/description aren't data-i18n
   // elements -- they're set directly in renderTourCard) if the tour is
   // currently open.
@@ -1950,4 +2702,238 @@ buildYearSelects();
 buildRasterSelect();
 buildOrpDatalist();
 renderLayer();
+positionOverlays();
+setTimeout(positionOverlays, 300);
 showPanel(selectedKod); // opens on the national aggregate view (selectedKod defaults to NATIONAL_KOD)
+
+// ---------------------------------------------------------------------
+// Narrow screens (colleagues' mobile mockups): hamburger menu, filter chip
+// that expands the filter card, draggable bottom sheet (peek / half / full),
+// accordion sections, CSV + share-link buttons, "Pořadí krajů" ranking.
+// Everything below is display/layout only -- no data is calculated here.
+// ---------------------------------------------------------------------
+Object.assign(I18N.cz, {
+  download_csv: "Stáhnout data (CSV)", share_link: "Sdílet odkaz", link_copied: "Odkaz zkopírován",
+  kraj_rank_title: "Pořadí krajů", kraj_rank_change: "medián ORP (změna)", kraj_rank_level: "medián ORP (hodnota)",
+  chip_change: "Změna v čase", menu_label: "Menu", panel_label: "Panel s podrobnostmi",
+});
+Object.assign(I18N.en, {
+  download_csv: "Download data (CSV)", share_link: "Share link", link_copied: "Link copied",
+  kraj_rank_title: "Region ranking", kraj_rank_change: "ORP median (change)", kraj_rank_level: "ORP median (value)",
+  chip_change: "Change over time", menu_label: "Menu", panel_label: "Details panel",
+});
+
+function isNarrow() { return window.innerWidth <= 900; }
+
+// ---- bottom sheet -----------------------------------------------------
+let sheetState = "peek"; // peek | half | full
+function sheetHeights() {
+  const H = document.getElementById("main").clientHeight || window.innerHeight;
+  return { peek: Math.min(250, Math.round(H * 0.4)), half: Math.round(H * 0.62), full: H };
+}
+function applySheet(state, px) {
+  const panel = document.getElementById("panel");
+  if (!isNarrow()) { panel.style.height = ""; document.documentElement.style.removeProperty("--sheet-h"); document.body.classList.remove("sheet-full"); return; }
+  const hs = sheetHeights();
+  if (state) sheetState = state;
+  const h = px != null ? px : hs[sheetState];
+  panel.style.height = h + "px";
+  document.documentElement.style.setProperty("--sheet-h", Math.min(h, hs.half) + "px");
+  document.body.classList.toggle("sheet-full", sheetState === "full" && px == null);
+}
+window.mobileSheetPx = function () { return Math.min(sheetHeights()[sheetState], sheetHeights().half); };
+function snapSheet(h) {
+  const hs = sheetHeights();
+  let best = "peek", d = Infinity;
+  Object.keys(hs).forEach((k) => { const dd = Math.abs(hs[k] - h); if (dd < d) { d = dd; best = k; } });
+  applySheet(best);
+  setTimeout(() => map.invalidateSize(), 260);
+}
+(function initSheet() {
+  const handle = document.getElementById("sheet-handle");
+  const panel = document.getElementById("panel");
+  if (!handle) return;
+  let startY = 0, startH = 0, moved = false, drag = false;
+  function begin(y) { drag = true; moved = false; startY = y; startH = panel.getBoundingClientRect().height; panel.classList.add("dragging"); }
+  function move(y) {
+    if (!drag) return;
+    const hs = sheetHeights();
+    const h = Math.max(hs.peek * 0.6, Math.min(hs.full, startH + (startY - y)));
+    if (Math.abs(startY - y) > 4) moved = true;
+    panel.style.height = h + "px";
+  }
+  function end() {
+    if (!drag) return;
+    drag = false; panel.classList.remove("dragging");
+    if (!moved) { const order = ["peek", "half", "full"]; applySheet(order[(order.indexOf(sheetState) + 1) % 3]); }
+    else snapSheet(panel.getBoundingClientRect().height);
+  }
+  handle.addEventListener("touchstart", (e) => begin(e.touches[0].clientY), { passive: true });
+  handle.addEventListener("touchmove", (e) => move(e.touches[0].clientY), { passive: true });
+  handle.addEventListener("touchend", end);
+  handle.addEventListener("mousedown", (e) => { begin(e.clientY); e.preventDefault(); });
+  window.addEventListener("mousemove", (e) => move(e.clientY));
+  window.addEventListener("mouseup", end);
+  handle.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { const o = ["peek", "half", "full"]; applySheet(o[(o.indexOf(sheetState) + 1) % 3]); e.preventDefault(); }
+  });
+})();
+
+// ---- hamburger menu + filter chip -------------------------------------
+(function initMobileChrome() {
+  const bar = document.getElementById("topbar"), btn = document.getElementById("menu-btn");
+  function setMenu(open) { bar.classList.toggle("menu-open", open); btn.setAttribute("aria-expanded", String(open)); }
+  btn.addEventListener("click", () => setMenu(!bar.classList.contains("menu-open")));
+  bar.querySelectorAll(".top-right button").forEach((b) => b.addEventListener("click", () => setMenu(false)));
+  document.getElementById("map").addEventListener("click", () => setMenu(false));
+  const chip = document.getElementById("filter-chip");
+  function setFilters(open) {
+    document.body.classList.toggle("filters-open", open);
+    chip.setAttribute("aria-expanded", String(open));
+  }
+  chip.addEventListener("click", () => setFilters(!document.body.classList.contains("filters-open")));
+  // "Zobrazit" closes the card on narrow screens (filters themselves apply at once)
+  document.getElementById("apply-btn").addEventListener("click", () => { if (isNarrow()) setFilters(false); });
+  window.addEventListener("keydown", (e) => { if (e.key === "Escape") { setFilters(false); setMenu(false); } });
+})();
+
+// The search box lives in the left panel on desktop and inside the expanded
+// filter card on narrow screens.
+function placeSearch() {
+  const search = document.querySelector(".panel-search");
+  const card = document.getElementById("filter-card");
+  const panel = document.getElementById("panel");
+  if (!search) return;
+  if (isNarrow()) { if (search.parentNode !== card) card.insertBefore(search, card.firstChild); }
+  else if (search.parentNode !== panel) panel.insertBefore(search, document.getElementById("panel-content"));
+}
+
+function updateFilterChip() {
+  const el = document.getElementById("filter-chip-text");
+  if (!el) return;
+  const who = (selectedKod && selectedKod !== NATIONAL_KOD) ? orpName(selectedKod) : orpName(NATIONAL_KOD);
+  const param = displayKey === "I" ? "IEI" : paramName(displayKey);
+  const m = mode === "change" ? T("chip_change") : T("mode_current");
+  const period = mode === "change" ? fromYear + "–" + toYear : String(currentYear);
+  el.textContent = [who, param, m, period].join(" • ");
+}
+
+// ---- accordions -------------------------------------------------------
+function initAccordions() {
+  const root = document.getElementById("panel-content");
+  root.querySelectorAll(".card").forEach((c) => {
+    if (!c.querySelector(":scope > h3")) return;
+    c.classList.add("m-acc");
+    if (isNarrow() && !c.dataset.accInit) { c.classList.add("collapsed"); c.dataset.accInit = "1"; }
+  });
+}
+// Per-card open/closed memory across re-renders (panel HTML is rebuilt).
+const accOpen = {};
+document.getElementById("panel-content").addEventListener("click", function (e) {
+  if (!isNarrow()) return;
+  if (e.target.closest(".info-icon")) return;
+  const h3 = e.target.closest(".card.m-acc > h3");
+  if (h3) {
+    const card = h3.parentNode;
+    card.classList.toggle("collapsed");
+    accOpen[h3.textContent.trim()] = !card.classList.contains("collapsed");
+    setTimeout(() => { card.querySelectorAll("canvas").forEach((cv) => { const c = Chart.getChart(cv); if (c) c.resize(); }); }, 0);
+    return;
+  }
+  const head = e.target.closest("#chart-section .p-section-head");
+  if (head && !e.target.closest(".chev-btn")) toggleChartSection();
+});
+
+// ---- region ranking on the national view ------------------------------
+function krajRankingHtml() {
+  const key = displayKey === "dominant" ? "I" : displayKey;
+  const byRegion = {};
+  Object.keys(ORP_DATA).filter((k) => k !== NATIONAL_KOD).forEach((k) => {
+    const info = REGION_INFO[k]; if (!info || !info.name) return;
+    const v = mode === "change" ? computeDelta(k, key) : (orpYear(k, currentYear) || {})[key];
+    if (v == null) return;
+    (byRegion[info.name] = byRegion[info.name] || []).push(v);
+  });
+  const rows = Object.keys(byRegion).map((n) => ({ name: n, val: median(byRegion[n]) })).filter((r) => r.val != null).sort((a, b) => b.val - a.val);
+  if (!rows.length) return "";
+  const maxAbs = Math.max.apply(null, rows.map((r) => Math.abs(r.val))) || 1;
+  const M = CHANGE_M[key] || RANGE_MAX_DELTA;
+  const body = rows.map((r, i) => {
+    const w = Math.max(4, Math.round((Math.abs(r.val) / maxAbs) * 100));
+    const col = mode === "change" ? diffColor(r.val, M) : "#007270";
+    const txt = mode === "change" ? signedPpNumber(r.val) : fmtNum(pctNum(r.val), 1) + (lang === "cz" ? " %" : "%");
+    return '<div class="kr-row"><span class="kr-n">' + (i + 1) + '.</span><span class="kr-name">' + r.name +
+      '</span><span class="kr-bar"><i style="width:' + w + "%;background:" + col + '"></i></span><b>' + txt + "</b></div>";
+  }).join("");
+  return '<div class="card m-acc kr-card" data-acc-init="1"><h3>' + T("kraj_rank_title") + ' <span class="kr-sub">' +
+    (mode === "change" ? T("kraj_rank_change") : T("kraj_rank_level")) + "</span></h3><div>" + body + "</div></div>";
+}
+(function injectKrajCss() {
+  const s = document.createElement("style");
+  s.textContent =
+    ".kr-sub{display:block;margin-top:2px;font-size:12.5px;font-weight:500;color:var(--text-2)}" +
+    ".kr-row{display:grid;grid-template-columns:30px minmax(0,1.5fr) minmax(40px,1fr) 52px;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--border);font-size:13px}" +
+    ".kr-row:last-child{border-bottom:none}.kr-n{color:var(--text-2);font-weight:600}.kr-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
+    ".kr-bar{height:8px;border-radius:4px;background:#E3E9E6;overflow:hidden}.kr-bar i{display:block;height:100%;border-radius:4px}.kr-row b{text-align:right}";
+  document.head.appendChild(s);
+})();
+
+// ---- share link (state in the URL hash) -------------------------------
+function stateHash() {
+  const p = new URLSearchParams();
+  p.set("m", mode); p.set("p", displayKey); p.set("y", currentYear);
+  p.set("f", fromYear); p.set("t", toYear); p.set("l", lang);
+  if (selectedKod && selectedKod !== NATIONAL_KOD) p.set("o", selectedKod);
+  return "#" + p.toString();
+}
+window.shareLink = function () {
+  const url = location.href.split("#")[0] + stateHash();
+  const label = document.getElementById("share-label");
+  const done = () => { if (label) { label.textContent = T("link_copied"); setTimeout(() => { label.textContent = T("share_link"); }, 1800); } };
+  if (navigator.share) { navigator.share({ title: T("title"), url: url }).catch(() => {}); return; }
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done, () => window.prompt(T("share_link"), url));
+  else window.prompt(T("share_link"), url);
+};
+function applyHashState() {
+  if (!location.hash || location.hash.length < 2) return;
+  let p; try { p = new URLSearchParams(location.hash.slice(1)); } catch (e) { return; }
+  const yr = (v) => { const n = parseInt(v, 10); return YEARS.indexOf(n) >= 0 ? n : null; };
+  if (["I", "F", "A", "G", "U"].indexOf(p.get("p")) >= 0) displayKey = p.get("p");
+  if (yr(p.get("y")) != null) { currentYear = yr(p.get("y")); currentYearIdx = YEARS.indexOf(currentYear); }
+  if (yr(p.get("f")) != null && yr(p.get("t")) != null && yr(p.get("f")) < yr(p.get("t"))) { fromYear = yr(p.get("f")); toYear = yr(p.get("t")); }
+  const o = p.get("o"); if (o && ORP_DATA[o] && o !== NATIONAL_KOD) selectedKod = o;
+  if (p.get("l") === "en" || p.get("l") === "cz") { if (p.get("l") !== lang) setLang(p.get("l")); }
+  setMode(p.get("m") === "change" ? "change" : "current");
+  if (selectedKod && selectedKod !== NATIONAL_KOD) fitToSelection();
+}
+
+// ---- hook called after every panel render -----------------------------
+window.mobileAfterPanel = function () {
+  // Region ranking whenever no single ORP is selected (national view)
+  if (!selectedKod || selectedKod === NATIONAL_KOD) {
+    const root = document.getElementById("panel-content");
+    if (!root.querySelector(".kr-card")) root.insertAdjacentHTML("beforeend", krajRankingHtml());
+  }
+  initAccordions();
+  document.querySelectorAll("#panel-content .card.m-acc").forEach((c) => {
+    const h = c.querySelector(":scope > h3");
+    if (h && accOpen[h.textContent.trim()] != null && isNarrow()) c.classList.toggle("collapsed", !accOpen[h.textContent.trim()]);
+  });
+  updateFilterChip();
+  document.getElementById("sheet-handle").setAttribute("aria-label", T("panel_label"));
+  document.getElementById("menu-btn").setAttribute("aria-label", T("menu_label"));
+};
+
+function onResizeMobile() {
+  placeSearch();
+  applySheet();
+  positionOverlays();
+  setTimeout(() => map.invalidateSize(), 0);
+}
+window.addEventListener("resize", onResizeMobile);
+window.addEventListener("orientationchange", () => setTimeout(onResizeMobile, 200));
+placeSearch();
+applySheet("peek");
+applyHashState();
+window.mobileAfterPanel();
+setTimeout(onResizeMobile, 50);
