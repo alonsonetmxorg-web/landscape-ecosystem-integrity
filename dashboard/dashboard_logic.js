@@ -543,8 +543,14 @@ const RASTER_LEGENDS = {
     lowText: "0%", highText: "100%",
   },
   cooling: {
+    // Same colours as before (blue -> red), but the values now run from the
+    // HIGHEST cooling capacity (blue, left) to the LOWEST (red, right), as the
+    // layer is drawn (.lyrx: invert = true, red = low, blue = high). The % are
+    // the range actually displayed by the layer's stretch -- mean +/- 2.5 SD of
+    // the dataset (mean 0.4887, SD 0.1242, 2024 layer), i.e. 0.18 .. 0.80 --
+    // not 0..100. Update these two numbers if the layer is re-stretched.
     stops: ["rgb(0,77,168)", "rgb(0,112,255)", "rgb(115,178,255)", "rgb(0,255,197)", "rgb(255,255,115)", "rgb(255,211,127)", "rgb(255,170,0)", "rgb(230,76,0)", "rgb(168,56,0)"],
-    lowText: "0%", highText: "100%",
+    lowText: "80%", highText: "18%",
   },
   hetero: {
     stops: ["#440154", "#414487", "#2a788e", "#22a884", "#7ad151", "#fde725"],
@@ -2716,11 +2722,13 @@ Object.assign(I18N.cz, {
   download_csv: "Stáhnout data (CSV)", share_link: "Sdílet odkaz", link_copied: "Odkaz zkopírován",
   kraj_rank_title: "Pořadí krajů", kraj_rank_change: "medián ORP (změna)", kraj_rank_level: "medián ORP (hodnota)",
   chip_change: "Změna v čase", menu_label: "Menu", panel_label: "Panel s podrobnostmi",
+  testing_banner: "Probíhá testování",
 });
 Object.assign(I18N.en, {
   download_csv: "Download data (CSV)", share_link: "Share link", link_copied: "Link copied",
   kraj_rank_title: "Region ranking", kraj_rank_change: "ORP median (change)", kraj_rank_level: "ORP median (value)",
   chip_change: "Change over time", menu_label: "Menu", panel_label: "Details panel",
+  testing_banner: "Testing in progress",
 });
 
 function isNarrow() { return window.innerWidth <= 900; }
