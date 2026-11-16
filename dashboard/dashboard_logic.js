@@ -1422,10 +1422,11 @@ legend.addTo(map);
 // End labels of the change legends: the word plus the range M in p. b. (the
 // team asked to show the numbers once M is confirmed from the real data).
 // `clip` marks layers whose values beyond M are shown at full colour.
-// Jakub's comment (S11 #5 / brief C6): legends show the words only. Set to
-// true to show the range numbers under "Pokles" / "Nárůst" once the team
-// agrees to them.
-const SHOW_LEGEND_NUMBERS = false;
+// Jakub's comment (S11 #5 / brief C6) asked for words only; for now the legends
+// show the lowest and highest value of the scale under "Pokles" / "Nárůst"
+// (no intermediate break points) while Jakub reviews. Set to false to go back
+// to the words only.
+const SHOW_LEGEND_NUMBERS = true;
 function legendEndLabel(word, sign, m, opts) {
   if (!SHOW_LEGEND_NUMBERS) return word;
   opts = opts || {};
@@ -1480,7 +1481,9 @@ function renderLegend(div) {
   const rl = RASTER_LEGENDS[activeRasterKey];
   if (rl) {
     const gradientStops = rl.stopsCss || rl.stops.join(",");
-    html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid #ddd;">';
+    // Divider only when something else sits above (the choropleth legend is
+    // skipped while a raster is on, so normally nothing does).
+    html += html.trim() ? '<div style="margin-top:8px;padding-top:8px;border-top:1px solid #ddd;">' : "<div>";
     html += "<strong>" + T("raster_" + activeRasterKey) + (rl.infoKey ? " " + infoIcon(rl.infoKey) : "") + "</strong>";
     html += '<div class="gradient-bar" style="background:linear-gradient(90deg,' + gradientStops + ')"></div>';
     const fmtLegendEnd = (s) => String(s).replace(/(\d)%$/, (m, d) => d + (lang === "cz" ? "\u00a0%" : "%"));
